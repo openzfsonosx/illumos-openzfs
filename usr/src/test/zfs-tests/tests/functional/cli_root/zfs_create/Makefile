@@ -32,7 +32,8 @@ PROGS = cleanup \
 	zfs_create_010_neg \
 	zfs_create_011_pos \
 	zfs_create_012_pos \
-	zfs_create_013_pos
+	zfs_create_013_pos \
+	zfs_create_014_pos
 
 FILES = properties.kshlib \
 	zfs_create_common.kshlib \

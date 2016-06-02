@@ -2360,7 +2360,7 @@ dbuf_prefetch_indirect_done(zio_t *zio, arc_buf_t *abuf, void *private)
 	 */
 	if (zio != NULL) {
 		ASSERT3S(BP_GET_LEVEL(zio->io_bp), ==, dpa->dpa_curlevel);
-		if (zio->io_flags & ZIO_FLAG_RAW) {
+		if (zio->io_flags & ZIO_FLAG_RAW_COMPRESS) {
 			ASSERT3U(BP_GET_PSIZE(zio->io_bp), ==, zio->io_size);
 		} else {
 			ASSERT3U(BP_GET_LSIZE(zio->io_bp), ==, zio->io_size);
@@ -3278,7 +3278,7 @@ dbuf_write_ready(zio_t *zio, arc_buf_t *buf, void *vdb)
 	DB_DNODE_EXIT(db);
 
 	if (!BP_IS_EMBEDDED(bp))
-		bp->blk_fill = fill;
+		BP_SET_FILL(bp, fill);
 
 	mutex_exit(&db->db_mtx);
 

@@ -40,6 +40,7 @@
 #include <sys/dsl_deadlist.h>
 #include <sys/refcount.h>
 #include <sys/rrwlock.h>
+#include <sys/dsl_crypt.h>
 #include <zfeature_common.h>
 
 #ifdef	__cplusplus
@@ -49,6 +50,7 @@ extern "C" {
 struct dsl_dataset;
 struct dsl_dir;
 struct dsl_pool;
+struct dsl_crypto_params;
 
 #define	DS_FLAG_INCONSISTENT	(1ULL<<0)
 #define	DS_IS_INCONSISTENT(ds)	\
@@ -244,19 +246,25 @@ boolean_t dsl_dataset_try_add_ref(struct dsl_pool *dp, dsl_dataset_t *ds,
 int dsl_dataset_hold_obj(struct dsl_pool *dp, uint64_t dsobj, void *tag,
     dsl_dataset_t **);
 void dsl_dataset_rele(dsl_dataset_t *ds, void *tag);
+int dsl_dataset_hold_crypt(struct dsl_pool *dp, const char *name, void *tag,
+    dsl_dataset_t **dsp);
+int dsl_dataset_hold_crypt_obj(struct dsl_pool *dp, uint64_t dsobj,
+    void *tag, dsl_dataset_t **dsp);
+void dsl_dataset_rele_crypt(dsl_dataset_t *ds, void *tag);
 int dsl_dataset_own(struct dsl_pool *dp, const char *name,
-    void *tag, dsl_dataset_t **dsp);
+    void *tag, boolean_t key_required, dsl_dataset_t **dsp);
 int dsl_dataset_own_obj(struct dsl_pool *dp, uint64_t dsobj,
-    void *tag, dsl_dataset_t **dsp);
+    void *tag, boolean_t key_required, dsl_dataset_t **dsp);
 void dsl_dataset_disown(dsl_dataset_t *ds, void *tag);
 void dsl_dataset_name(dsl_dataset_t *ds, char *name);
-boolean_t dsl_dataset_tryown(dsl_dataset_t *ds, void *tag);
+int dsl_dataset_tryown(dsl_dataset_t *ds, void *tag, boolean_t key_required);
 int dsl_dataset_namelen(dsl_dataset_t *ds);
 boolean_t dsl_dataset_has_owner(dsl_dataset_t *ds);
 uint64_t dsl_dataset_create_sync(dsl_dir_t *pds, const char *lastname,
-    dsl_dataset_t *origin, uint64_t flags, cred_t *, dmu_tx_t *);
+    dsl_dataset_t *origin, uint64_t flags, cred_t *,
+    struct dsl_crypto_params *, dmu_tx_t *);
 uint64_t dsl_dataset_create_sync_dd(dsl_dir_t *dd, dsl_dataset_t *origin,
-    uint64_t flags, dmu_tx_t *tx);
+    struct dsl_crypto_params *dcp, uint64_t flags, dmu_tx_t *tx);
 int dsl_dataset_snapshot(nvlist_t *snaps, nvlist_t *props, nvlist_t *errors);
 int dsl_dataset_promote(const char *name, char *conflsnap);
 int dsl_dataset_clone_swap(dsl_dataset_t *clone, dsl_dataset_t *origin_head,

@@ -42,6 +42,7 @@ PROGS = cleanup \
 	zpool_create_021_pos \
 	zpool_create_022_pos \
 	zpool_create_023_neg \
+	zpool_create_024_pos \
 	zpool_create_features_001_pos \
 	zpool_create_features_002_pos \
 	zpool_create_features_003_pos \
