@@ -48,6 +48,7 @@ dir path=opt/zfs-tests/tests/functional/cli_root/zfs_create
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_destroy
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_get
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_inherit
+dir path=opt/zfs-tests/tests/functional/cli_root/zfs_key
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_mount
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_promote
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_property
@@ -510,8 +511,14 @@ file \
     path=opt/zfs-tests/tests/functional/cli_root/zfs_create/zfs_create_013_pos \
     mode=0555
 file \
+    path=opt/zfs-tests/tests/functional/cli_root/zfs_create/zfs_create_014_pos \
+    mode=0555
+file \
     path=opt/zfs-tests/tests/functional/cli_root/zfs_create/zfs_create_common.kshlib \
     mode=0444
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zfs_create/zfs_create_encrypted \
+    mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_destroy/cleanup \
     mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_destroy/setup mode=0555
@@ -608,6 +615,24 @@ file \
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zfs_inherit/zfs_inherit_003_pos \
     mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/cleanup mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/key.cfg mode=0444
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/setup mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_change_neg \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_change_pos \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_common.kshlib \
+    mode=0444
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_load_neg \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_load_pos \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_unload_neg \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_unload_pos \
+    mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_mount/cleanup mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_mount/setup mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_mount/zfs_mount.cfg \
@@ -640,6 +665,9 @@ file path=opt/zfs-tests/tests/functional/cli_root/zfs_mount/zfs_mount_012_neg \
     mode=0555
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zfs_mount/zfs_mount_all_001_pos \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zfs_mount/zfs_mount_encrypted \
     mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_promote/cleanup \
     mode=0555
@@ -717,6 +745,12 @@ file \
     mode=0555
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zfs_receive/zfs_receive_013_pos \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zfs_receive/zfs_receive_encrypted_neg \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zfs_receive/zfs_receive_encrypted_pos \
     mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_rename/cleanup mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_rename/setup mode=0555
@@ -811,6 +845,12 @@ file path=opt/zfs-tests/tests/functional/cli_root/zfs_send/zfs_send_005_pos \
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_send/zfs_send_006_pos \
     mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_send/zfs_send_007_pos \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zfs_send/zfs_send_encrypted_neg \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zfs_send/zfs_send_encrypted_pos \
     mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_set/cache_001_pos \
     mode=0555
@@ -1142,6 +1182,12 @@ file \
     mode=0555
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zpool_create/zpool_create_023_neg \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zpool_create/zpool_create_024_pos \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zpool_create/zpool_create_encrypted \
     mode=0555
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zpool_create/zpool_create_features_001_pos \

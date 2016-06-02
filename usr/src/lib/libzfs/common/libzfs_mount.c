@@ -77,6 +77,7 @@
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/dsl_crypt.h>
 
 #include <libzfs.h>
 
@@ -331,6 +332,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 	char mountpoint[ZFS_MAXPROPLEN];
 	char mntopts[MNT_LINE_MAX];
 	libzfs_handle_t *hdl = zhp->zfs_hdl;
+	uint64_t keystatus;
 
 	if (options == NULL)
 		mntopts[0] = '\0';
@@ -345,6 +347,21 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 
 	if (!zfs_is_mountable(zhp, mountpoint, sizeof (mountpoint), NULL))
 		return (0);
+
+	/*
+	 * If the filesystem is an encryption root the key must be
+	 * loaded in order to mount. If it isn't, we ask for the key now.
+	 * During a mount, it is possible that a parent key may be loaded
+	 * without updating this zhp. Just in case, we refresh the properties.
+	 */
+	zfs_refresh_properties(zhp);
+	keystatus = zfs_prop_get_int(zhp, ZFS_PROP_KEYSTATUS);
+	if (keystatus == ZFS_KEYSTATUS_UNAVAILABLE) {
+		int rc;
+		rc = zfs_crypto_load_key(zhp);
+		if (rc)
+			return (rc);
+	}
 
 	/* Create the directory if it doesn't already exist */
 	if (lstat(mountpoint, &buf) != 0) {
@@ -1132,11 +1149,13 @@ libzfs_dataset_cmp(const void *a, const void *b)
  */
 #pragma weak zpool_mount_datasets = zpool_enable_datasets
 int
-zpool_enable_datasets(zpool_handle_t *zhp, const char *mntopts, int flags)
+zpool_enable_datasets(zpool_handle_t *zhp, const char *mntopts, int flags,
+    boolean_t loadkeys)
 {
 	get_all_cb_t cb = { 0 };
 	libzfs_handle_t *hdl = zhp->zpool_hdl;
 	zfs_handle_t *zfsp;
+	uint64_t keystatus;
 	int i, ret = -1;
 	int *good;
 
@@ -1165,6 +1184,11 @@ zpool_enable_datasets(zpool_handle_t *zhp, const char *mntopts, int flags)
 
 	ret = 0;
 	for (i = 0; i < cb.cb_used; i++) {
+		keystatus =
+		    zfs_prop_get_int(cb.cb_handles[i], ZFS_PROP_KEYSTATUS);
+		if (keystatus == ZFS_KEYSTATUS_UNAVAILABLE && !loadkeys)
+			continue;
+
 		if (zfs_mount(cb.cb_handles[i], mntopts, flags) != 0)
 			ret = -1;
 		else

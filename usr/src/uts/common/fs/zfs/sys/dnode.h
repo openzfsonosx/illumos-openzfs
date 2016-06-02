@@ -142,7 +142,15 @@ typedef struct dnode_phys {
 	uint8_t dn_flags;		/* DNODE_FLAG_* */
 	uint16_t dn_datablkszsec;	/* data block size in 512b sectors */
 	uint16_t dn_bonuslen;		/* length of dn_bonus */
-	uint8_t dn_pad2[4];
+	/*
+	 * dn_extra_slots is a placeholder for a feature in other ZFS
+	 * implementations. In this implementation, its value is always
+	 * 0. We declare it here to ensure it isn't used for a different
+	 * purpose, and to improve code portability with implementations
+	 * which support extra dnode slots.
+	 */
+	uint8_t dn_extra_slots;		/* # of subsequent slots consumed */
+	uint8_t dn_pad2[3];
 
 	/* accounting is protected by dn_dirty_mtx */
 	uint64_t dn_maxblkid;		/* largest allocated block ID */
@@ -154,6 +162,9 @@ typedef struct dnode_phys {
 	uint8_t dn_bonus[DN_MAX_BONUSLEN - sizeof (blkptr_t)];
 	blkptr_t dn_spill;
 } dnode_phys_t;
+
+#define	DN_SPILL_BLKPTR(dnp)	(blkptr_t *)((char *)(dnp) + \
+	(((dnp)->dn_extra_slots + 1) << DNODE_SHIFT) - (1 << SPA_BLKPTRSHIFT))
 
 struct dnode {
 	/*
