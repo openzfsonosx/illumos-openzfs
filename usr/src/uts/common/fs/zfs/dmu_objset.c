@@ -405,6 +405,8 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 	if (ds != NULL) {
 		boolean_t needlock = B_FALSE;
 
+		os->os_encrypted = (ds->ds_dir->dd_crypto_obj != 0);
+
 		/*
 		 * Note: it's valid to open the objset if the dataset is
 		 * long-held, in which case the pool_config lock will not
@@ -476,6 +478,7 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 		/* It's the meta-objset. */
 		os->os_checksum = ZIO_CHECKSUM_FLETCHER_4;
 		os->os_compress = ZIO_COMPRESS_ON;
+		os->os_encrypted = B_FALSE;
 		os->os_copies = spa_max_replication(spa);
 		os->os_dedup_checksum = ZIO_CHECKSUM_OFF;
 		os->os_dedup_verify = B_FALSE;
@@ -578,6 +581,7 @@ dmu_objset_hold(const char *name, void *tag, objset_t **osp)
 	return (err);
 }
 
+/* ARGSUSED */
 static int
 dmu_objset_own_impl(dsl_dataset_t *ds, dmu_objset_type_t type,
     boolean_t readonly, void *tag, objset_t **osp)
@@ -586,15 +590,13 @@ dmu_objset_own_impl(dsl_dataset_t *ds, dmu_objset_type_t type,
 
 	err = dmu_objset_from_ds(ds, osp);
 	if (err != 0) {
-		dsl_dataset_disown(ds, tag);
+		return (err);
 	} else if (type != DMU_OST_ANY && type != (*osp)->os_phys->os_type) {
-		dsl_dataset_disown(ds, tag);
 		return (SET_ERROR(EINVAL));
 	} else if (!readonly && dsl_dataset_is_snapshot(ds)) {
-		dsl_dataset_disown(ds, tag);
 		return (SET_ERROR(EROFS));
 	}
-	return (err);
+	return (0);
 }
 
 /*
@@ -604,38 +606,52 @@ dmu_objset_own_impl(dsl_dataset_t *ds, dmu_objset_type_t type,
  */
 int
 dmu_objset_own(const char *name, dmu_objset_type_t type,
-    boolean_t readonly, void *tag, objset_t **osp)
+    boolean_t readonly, boolean_t key_required, void *tag, objset_t **osp)
 {
 	dsl_pool_t *dp;
 	dsl_dataset_t *ds;
 	int err;
+	int flags = (key_required) ? DS_HOLD_FLAG_DECRYPT : 0;
 
 	err = dsl_pool_hold(name, FTAG, &dp);
 	if (err != 0)
 		return (err);
-	err = dsl_dataset_own(dp, name, tag, &ds);
+	err = dsl_dataset_own(dp, name, flags, tag, &ds);
 	if (err != 0) {
 		dsl_pool_rele(dp, FTAG);
 		return (err);
 	}
 	err = dmu_objset_own_impl(ds, type, readonly, tag, osp);
+	if (err != 0) {
+		dsl_dataset_disown(ds, flags, tag);
+		dsl_pool_rele(dp, FTAG);
+		return (err);
+	}
+
 	dsl_pool_rele(dp, FTAG);
 
-	return (err);
+	return (0);
 }
 
 int
 dmu_objset_own_obj(dsl_pool_t *dp, uint64_t obj, dmu_objset_type_t type,
-    boolean_t readonly, void *tag, objset_t **osp)
+    boolean_t readonly, boolean_t key_required, void *tag, objset_t **osp)
 {
 	dsl_dataset_t *ds;
 	int err;
+	int flags = (key_required) ? DS_HOLD_FLAG_DECRYPT: 0;
 
-	err = dsl_dataset_own_obj(dp, obj, tag, &ds);
+	err = dsl_dataset_own_obj(dp, obj, flags, tag, &ds);
 	if (err != 0)
 		return (err);
 
-	return (dmu_objset_own_impl(ds, type, readonly, tag, osp));
+	err = dmu_objset_own_impl(ds, type, readonly, tag, osp);
+	if (err != 0) {
+		dsl_dataset_disown(ds, flags, tag);
+		return (err);
+	}
+
+	return (0);
 }
 
 void
@@ -658,11 +674,11 @@ dmu_objset_rele(objset_t *os, void *tag)
  * same name so that it can be partially torn down and reconstructed.
  */
 void
-dmu_objset_refresh_ownership(objset_t *os, void *tag)
+dmu_objset_refresh_ownership(objset_t *os, boolean_t key_needed, void *tag)
 {
 	dsl_pool_t *dp;
 	dsl_dataset_t *ds, *newds;
-	char name[ZFS_MAX_DATASET_NAME_LEN];
+	char name[MAXNAMELEN];
 
 	ds = os->os_dsl_dataset;
 	VERIFY3P(ds, !=, NULL);
@@ -672,16 +688,18 @@ dmu_objset_refresh_ownership(objset_t *os, void *tag)
 	dsl_dataset_name(ds, name);
 	dp = dmu_objset_pool(os);
 	dsl_pool_config_enter(dp, FTAG);
-	dmu_objset_disown(os, tag);
-	VERIFY0(dsl_dataset_own(dp, name, tag, &newds));
+	dmu_objset_disown(os, key_needed, tag);
+	VERIFY0(dsl_dataset_own(dp, name,
+	    (key_needed) ? DS_HOLD_FLAG_DECRYPT : 0, tag, &newds));
 	VERIFY3P(newds, ==, os->os_dsl_dataset);
 	dsl_pool_config_exit(dp, FTAG);
 }
 
 void
-dmu_objset_disown(objset_t *os, void *tag)
+dmu_objset_disown(objset_t *os, boolean_t key_needed, void *tag)
 {
-	dsl_dataset_disown(os->os_dsl_dataset, tag);
+	dsl_dataset_disown(os->os_dsl_dataset,
+	    (key_needed) ? DS_HOLD_FLAG_DECRYPT : 0, tag);
 }
 
 void
@@ -758,6 +776,8 @@ dmu_objset_evict(objset_t *os)
 	} else {
 		mutex_exit(&os->os_lock);
 	}
+
+
 }
 
 void
@@ -875,6 +895,7 @@ typedef struct dmu_objset_create_arg {
 	void *doca_userarg;
 	dmu_objset_type_t doca_type;
 	uint64_t doca_flags;
+	dsl_crypto_params_t *doca_dcp;
 } dmu_objset_create_arg_t;
 
 /*ARGSUSED*/
@@ -900,8 +921,16 @@ dmu_objset_create_check(void *arg, dmu_tx_t *tx)
 		dsl_dir_rele(pdd, FTAG);
 		return (SET_ERROR(EEXIST));
 	}
+
+	error = dmu_objset_create_crypt_check(pdd, NULL, doca->doca_dcp);
+	if (error != 0) {
+		dsl_dir_rele(pdd, FTAG);
+		return (error);
+	}
+
 	error = dsl_fs_ss_limit_check(pdd, 1, ZFS_PROP_FILESYSTEM_LIMIT, NULL,
 	    doca->doca_cred);
+
 	dsl_dir_rele(pdd, FTAG);
 
 	return (error);
@@ -918,13 +947,15 @@ dmu_objset_create_sync(void *arg, dmu_tx_t *tx)
 	uint64_t obj;
 	blkptr_t *bp;
 	objset_t *os;
+	zio_t *rzio;
 
 	VERIFY0(dsl_dir_hold(dp, doca->doca_name, FTAG, &pdd, &tail));
 
 	obj = dsl_dataset_create_sync(pdd, tail, NULL, doca->doca_flags,
-	    doca->doca_cred, tx);
+	    doca->doca_cred, doca->doca_dcp, tx);
 
-	VERIFY0(dsl_dataset_hold_obj(pdd->dd_pool, obj, FTAG, &ds));
+	VERIFY0(dsl_dataset_hold_obj_flags(pdd->dd_pool, obj,
+	    DS_HOLD_FLAG_DECRYPT, FTAG, &ds));
 	rrw_enter(&ds->ds_bp_rwlock, RW_READER, FTAG);
 	bp = dsl_dataset_get_blkptr(ds);
 	os = dmu_objset_create_impl(pdd->dd_pool->dp_spa,
@@ -936,14 +967,38 @@ dmu_objset_create_sync(void *arg, dmu_tx_t *tx)
 		    doca->doca_cred, tx);
 	}
 
+	/*
+	 * doca_userfunc() may write out some data that needs to be encrypted
+	 * if the dataset is encrypted (specifically the root directory).
+	 * We need to write this data out before the encryption key mapping is
+	 * removed by dsl_dataset_rele_flags(). However, this data won't
+	 * normally be written out by the zio layer until after this sync
+	 * function has returned. In this case, we must call dmu_objset_sync()
+	 * to ensure the encrypted data is written out before we release the
+	 * dataset. Doing that requires that we call
+	 * dmu_objset_do_userquota_updates() to clean up open references,
+	 * which will in turn write out more encrypted data, so we must call
+	 * dmu_objset_sync() again.
+	 */
+	if (os->os_encrypted) {
+		rzio = zio_root(dp->dp_spa, NULL, NULL, ZIO_FLAG_MUSTSUCCEED);
+		dmu_objset_sync(os, rzio, tx);
+		VERIFY0(zio_wait(rzio));
+		dmu_objset_do_userquota_updates(os, tx);
+
+		rzio = zio_root(dp->dp_spa, NULL, NULL, ZIO_FLAG_MUSTSUCCEED);
+		dmu_objset_sync(os, rzio, tx);
+		VERIFY0(zio_wait(rzio));
+	}
+
 	spa_history_log_internal_ds(ds, "create", tx, "");
-	dsl_dataset_rele(ds, FTAG);
+	dsl_dataset_rele_flags(ds, DS_HOLD_FLAG_DECRYPT, FTAG);
 	dsl_dir_rele(pdd, FTAG);
 }
 
 int
 dmu_objset_create(const char *name, dmu_objset_type_t type, uint64_t flags,
-    void (*func)(objset_t *os, void *arg, cred_t *cr, dmu_tx_t *tx), void *arg)
+    dsl_crypto_params_t *dcp, dmu_objset_create_sync_func_t func, void *arg)
 {
 	dmu_objset_create_arg_t doca;
 
@@ -953,6 +1008,7 @@ dmu_objset_create(const char *name, dmu_objset_type_t type, uint64_t flags,
 	doca.doca_userfunc = func;
 	doca.doca_userarg = arg;
 	doca.doca_type = type;
+	doca.doca_dcp = dcp;
 
 	return (dsl_sync_task(name,
 	    dmu_objset_create_check, dmu_objset_create_sync, &doca,
@@ -963,6 +1019,7 @@ typedef struct dmu_objset_clone_arg {
 	const char *doca_clone;
 	const char *doca_origin;
 	cred_t *doca_cred;
+	dsl_crypto_params_t *doca_dcp;
 } dmu_objset_clone_arg_t;
 
 /*ARGSUSED*/
@@ -996,18 +1053,30 @@ dmu_objset_clone_check(void *arg, dmu_tx_t *tx)
 		dsl_dir_rele(pdd, FTAG);
 		return (SET_ERROR(EDQUOT));
 	}
-	dsl_dir_rele(pdd, FTAG);
 
 	error = dsl_dataset_hold(dp, doca->doca_origin, FTAG, &origin);
-	if (error != 0)
+	if (error != 0) {
+		dsl_dir_rele(pdd, FTAG);
 		return (error);
+	}
 
 	/* You can only clone snapshots, not the head datasets. */
 	if (!origin->ds_is_snapshot) {
 		dsl_dataset_rele(origin, FTAG);
+		dsl_dir_rele(pdd, FTAG);
 		return (SET_ERROR(EINVAL));
 	}
+
+	error = dmu_objset_create_crypt_check(pdd, origin->ds_dir,
+	    doca->doca_dcp);
+	if (error != 0) {
+		dsl_dataset_rele(origin, FTAG);
+		dsl_dir_rele(pdd, FTAG);
+		return (error);
+	}
+
 	dsl_dataset_rele(origin, FTAG);
+	dsl_dir_rele(pdd, FTAG);
 
 	return (0);
 }
@@ -1027,7 +1096,7 @@ dmu_objset_clone_sync(void *arg, dmu_tx_t *tx)
 	VERIFY0(dsl_dataset_hold(dp, doca->doca_origin, FTAG, &origin));
 
 	obj = dsl_dataset_create_sync(pdd, tail, origin, 0,
-	    doca->doca_cred, tx);
+	    doca->doca_cred, doca->doca_dcp, tx);
 
 	VERIFY0(dsl_dataset_hold_obj(pdd->dd_pool, obj, FTAG, &ds));
 	dsl_dataset_name(origin, namebuf);
@@ -1039,13 +1108,15 @@ dmu_objset_clone_sync(void *arg, dmu_tx_t *tx)
 }
 
 int
-dmu_objset_clone(const char *clone, const char *origin)
+dmu_objset_clone(const char *clone, const char *origin,
+    dsl_crypto_params_t *dcp)
 {
 	dmu_objset_clone_arg_t doca;
 
 	doca.doca_clone = clone;
 	doca.doca_origin = origin;
 	doca.doca_cred = CRED();
+	doca.doca_dcp = dcp;
 
 	return (dsl_sync_task(clone,
 	    dmu_objset_clone_check, dmu_objset_clone_sync, &doca,
@@ -1101,10 +1172,11 @@ dmu_objset_write_ready(zio_t *zio, arc_buf_t *abuf, void *arg)
 	blkptr_t *bp = zio->io_bp;
 	objset_t *os = arg;
 	dnode_phys_t *dnp = &os->os_phys->os_meta_dnode;
+	uint64_t fill = 0;
 
 	ASSERT(!BP_IS_EMBEDDED(bp));
+	ASSERT(!BP_IS_ENCRYPTED(bp));
 	ASSERT3U(BP_GET_TYPE(bp), ==, DMU_OT_OBJSET);
-	ASSERT0(BP_GET_LEVEL(bp));
 
 	/*
 	 * Update rootbp fill count: it should be the number of objects
@@ -1112,9 +1184,11 @@ dmu_objset_write_ready(zio_t *zio, arc_buf_t *abuf, void *arg)
 	 * objects that are stored in the objset_phys_t -- the meta
 	 * dnode and user/group accounting objects).
 	 */
-	bp->blk_fill = 0;
 	for (int i = 0; i < dnp->dn_nblkptr; i++)
-		bp->blk_fill += BP_GET_FILL(&dnp->dn_blkptr[i]);
+		fill += BP_GET_FILL(&dnp->dn_blkptr[i]);
+
+	BP_SET_FILL(bp, fill);
+
 	if (os->os_dsl_dataset != NULL)
 		rrw_enter(&os->os_dsl_dataset->ds_bp_rwlock, RW_WRITER, FTAG);
 	*os->os_rootbp = *bp;
@@ -1201,7 +1275,7 @@ dmu_objset_sync(objset_t *os, zio_t *pio, dmu_tx_t *tx)
 	    ZB_ROOT_OBJECT, ZB_ROOT_LEVEL, ZB_ROOT_BLKID);
 	arc_release(os->os_phys_buf, &os->os_phys_buf);
 
-	dmu_write_policy(os, NULL, 0, 0, ZIO_COMPRESS_INHERIT, &zp);
+	dmu_write_policy(os, NULL, 0, 0, &zp);
 
 	zio = arc_write(pio, os->os_spa, tx->tx_txg,
 	    blkptr_copy, os->os_phys_buf, DMU_OS_IS_L2CACHEABLE(os),

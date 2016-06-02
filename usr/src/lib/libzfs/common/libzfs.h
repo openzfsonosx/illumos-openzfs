@@ -128,6 +128,7 @@ typedef enum zfs_error {
 	EZFS_DIFF,		/* general failure of zfs diff */
 	EZFS_DIFFDATA,		/* bad zfs diff data */
 	EZFS_POOLREADONLY,	/* pool is in read-only mode */
+	EZFS_CRYPTOFAILED,	/* failed to setup encryption */
 	EZFS_UNKNOWN
 } zfs_error_t;
 
@@ -423,8 +424,8 @@ extern uint64_t zfs_prop_default_numeric(zfs_prop_t);
 extern const char *zfs_prop_column_name(zfs_prop_t);
 extern boolean_t zfs_prop_align_right(zfs_prop_t);
 
-extern nvlist_t *zfs_valid_proplist(libzfs_handle_t *, zfs_type_t,
-    nvlist_t *, uint64_t, zfs_handle_t *, zpool_handle_t *, const char *);
+extern nvlist_t *zfs_valid_proplist(libzfs_handle_t *, zfs_type_t, nvlist_t *,
+    uint64_t, zfs_handle_t *, zpool_handle_t *, boolean_t, const char *);
 
 extern const char *zfs_prop_to_name(zfs_prop_t);
 extern int zfs_prop_set(zfs_handle_t *, const char *, const char *);
@@ -453,6 +454,19 @@ extern nvlist_t *zfs_get_user_props(zfs_handle_t *);
 extern nvlist_t *zfs_get_recvd_props(zfs_handle_t *);
 extern nvlist_t *zfs_get_clones_nvl(zfs_handle_t *);
 
+
+/*
+ * zfs encryption management
+ */
+extern int zfs_crypto_is_encryption_root(zfs_handle_t *, boolean_t *);
+extern int zfs_crypto_create(libzfs_handle_t *, char *, nvlist_t *, nvlist_t *,
+    uint8_t **, uint_t *);
+extern int zfs_crypto_clone(libzfs_handle_t *, zfs_handle_t *, char *,
+    nvlist_t *, uint8_t **, uint_t *);
+extern int zfs_crypto_attempt_load_keys(libzfs_handle_t *, char *);
+extern int zfs_crypto_load_key(zfs_handle_t *, boolean_t, char *);
+extern int zfs_crypto_unload_key(zfs_handle_t *);
+extern int zfs_crypto_rewrap(zfs_handle_t *, nvlist_t *, boolean_t);
 
 typedef struct zprop_list {
 	int		pl_prop;
@@ -686,6 +700,7 @@ extern const char *zfs_type_to_name(zfs_type_t);
 extern void zfs_refresh_properties(zfs_handle_t *);
 extern int zfs_name_valid(const char *, zfs_type_t);
 extern zfs_handle_t *zfs_path_to_zhandle(libzfs_handle_t *, char *, zfs_type_t);
+extern int zfs_parent_name(zfs_handle_t *, char *, size_t);
 extern boolean_t zfs_dataset_exists(libzfs_handle_t *, const char *,
     zfs_type_t);
 extern int zfs_spa_version(zfs_handle_t *, int *);

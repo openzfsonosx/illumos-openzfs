@@ -127,7 +127,7 @@ lzc_ioctl(zfs_ioc_t ioc, const char *name,
 {
 	zfs_cmd_t zc = { 0 };
 	int error = 0;
-	char *packed;
+	char *packed = NULL;
 	size_t size;
 
 	ASSERT3S(g_refcount, >, 0);
@@ -135,9 +135,11 @@ lzc_ioctl(zfs_ioc_t ioc, const char *name,
 
 	(void) strlcpy(zc.zc_name, name, sizeof (zc.zc_name));
 
-	packed = fnvlist_pack(source, &size);
-	zc.zc_nvlist_src = (uint64_t)(uintptr_t)packed;
-	zc.zc_nvlist_src_size = size;
+	if (source != NULL) {
+		packed = fnvlist_pack(source, &size);
+		zc.zc_nvlist_src = (uint64_t)(uintptr_t)packed;
+		zc.zc_nvlist_src_size = size;
+	}
 
 	if (resultp != NULL) {
 		*resultp = NULL;
@@ -171,34 +173,58 @@ lzc_ioctl(zfs_ioc_t ioc, const char *name,
 	}
 
 out:
-	fnvlist_pack_free(packed, size);
+	if (packed != NULL)
+		fnvlist_pack_free(packed, size);
 	free((void *)(uintptr_t)zc.zc_nvlist_dst);
 	return (error);
 }
 
 int
-lzc_create(const char *fsname, enum lzc_dataset_type type, nvlist_t *props)
+lzc_create(const char *fsname, enum lzc_dataset_type type, nvlist_t *props,
+    uint8_t *wkeydata, uint_t wkeylen)
 {
 	int error;
+	nvlist_t *hidden_args = NULL;
 	nvlist_t *args = fnvlist_alloc();
+
 	fnvlist_add_int32(args, "type", (dmu_objset_type_t)type);
 	if (props != NULL)
 		fnvlist_add_nvlist(args, "props", props);
+
+	if (wkeydata != NULL) {
+		hidden_args = fnvlist_alloc();
+		fnvlist_add_uint8_array(hidden_args, "wkeydata", wkeydata,
+		    wkeylen);
+		fnvlist_add_nvlist(args, ZPOOL_HIDDEN_ARGS, hidden_args);
+	}
+
 	error = lzc_ioctl(ZFS_IOC_CREATE, fsname, args, NULL);
+	nvlist_free(hidden_args);
 	nvlist_free(args);
 	return (error);
 }
 
 int
-lzc_clone(const char *fsname, const char *origin,
-    nvlist_t *props)
+lzc_clone(const char *fsname, const char *origin, nvlist_t *props,
+    uint8_t *wkeydata, uint_t wkeylen)
 {
 	int error;
+	nvlist_t *hidden_args = NULL;
 	nvlist_t *args = fnvlist_alloc();
+
 	fnvlist_add_string(args, "origin", origin);
 	if (props != NULL)
 		fnvlist_add_nvlist(args, "props", props);
+
+	if (wkeydata != NULL) {
+		hidden_args = fnvlist_alloc();
+		fnvlist_add_uint8_array(hidden_args, "wkeydata", wkeydata,
+		    wkeylen);
+		fnvlist_add_nvlist(args, ZPOOL_HIDDEN_ARGS, hidden_args);
+	}
+
 	error = lzc_ioctl(ZFS_IOC_CLONE, fsname, args, NULL);
+	nvlist_free(hidden_args);
 	nvlist_free(args);
 	return (error);
 }
@@ -818,5 +844,66 @@ lzc_destroy_bookmarks(nvlist_t *bmarks, nvlist_t **errlist)
 
 	error = lzc_ioctl(ZFS_IOC_DESTROY_BOOKMARKS, pool, bmarks, errlist);
 
+	return (error);
+}
+
+/*
+ * Performs key management functions
+ *
+ * crypto_cmd should be a value from zfs_ioc_crypto_cmd_t. If the command
+ * specifies to load or change a wrapping key, the key should be specified in
+ * the hidden_args nvlist so that it is not logged
+ */
+int
+lzc_load_key(const char *fsname, boolean_t noop, uint8_t *wkeydata,
+    uint_t wkeylen)
+{
+	int error;
+	nvlist_t *ioc_args;
+	nvlist_t *hidden_args;
+
+	if (wkeydata == NULL)
+		return (EINVAL);
+
+	ioc_args = fnvlist_alloc();
+	hidden_args = fnvlist_alloc();
+	fnvlist_add_uint8_array(hidden_args, "wkeydata", wkeydata, wkeylen);
+	fnvlist_add_nvlist(ioc_args, ZPOOL_HIDDEN_ARGS, hidden_args);
+	if (noop)
+		fnvlist_add_boolean(ioc_args, "noop");
+	error = lzc_ioctl(ZFS_IOC_LOAD_KEY, fsname, ioc_args, NULL);
+	nvlist_free(hidden_args);
+	nvlist_free(ioc_args);
+
+	return (error);
+}
+
+int
+lzc_unload_key(const char *fsname)
+{
+	return (lzc_ioctl(ZFS_IOC_UNLOAD_KEY, fsname, NULL, NULL));
+}
+
+int
+lzc_change_key(const char *fsname, nvlist_t *props, uint8_t *wkeydata,
+    uint_t wkeylen)
+{
+	int error;
+	nvlist_t *ioc_args = fnvlist_alloc();
+	nvlist_t *hidden_args = NULL;
+
+	if (wkeydata != NULL) {
+		hidden_args = fnvlist_alloc();
+		fnvlist_add_uint8_array(hidden_args, "wkeydata", wkeydata,
+		    wkeylen);
+		fnvlist_add_nvlist(ioc_args, ZPOOL_HIDDEN_ARGS, hidden_args);
+	}
+
+	if (props != NULL)
+		fnvlist_add_nvlist(ioc_args, "props", props);
+
+	error = lzc_ioctl(ZFS_IOC_CHANGE_KEY, fsname, ioc_args, NULL);
+	nvlist_free(hidden_args);
+	nvlist_free(ioc_args);
 	return (error);
 }

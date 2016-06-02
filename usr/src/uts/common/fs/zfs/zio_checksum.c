@@ -297,12 +297,14 @@ zio_checksum_compute(zio_t *zio, enum zio_checksum checksum,
 	blkptr_t *bp = zio->io_bp;
 	uint64_t offset = zio->io_offset;
 	zio_checksum_info_t *ci = &zio_checksum_table[checksum];
-	zio_cksum_t cksum;
+	zio_cksum_t cksum, tmp_cksum;
+	zio_cksum_t *final_cksum;
 	spa_t *spa = zio->io_spa;
 
 	ASSERT((uint_t)checksum < ZIO_CHECKSUM_FUNCTIONS);
 	ASSERT(ci->ci_func[0] != NULL);
 
+	bzero(&tmp_cksum, sizeof (zio_cksum_t));
 	zio_checksum_template_init(checksum, spa);
 
 	if (ci->ci_flags & ZCHECKSUM_FLAG_EMBEDDED) {
@@ -318,19 +320,52 @@ zio_checksum_compute(zio_t *zio, enum zio_checksum checksum,
 		} else {
 			eck = (zio_eck_t *)((char *)data + size) - 1;
 		}
-		if (checksum == ZIO_CHECKSUM_GANG_HEADER)
+
+		if (checksum == ZIO_CHECKSUM_GANG_HEADER) {
 			zio_checksum_gang_verifier(&eck->zec_cksum, bp);
-		else if (checksum == ZIO_CHECKSUM_LABEL)
+		} else if (checksum == ZIO_CHECKSUM_LABEL) {
 			zio_checksum_label_verifier(&eck->zec_cksum, offset);
-		else
-			bp->blk_cksum = eck->zec_cksum;
+		} else {
+			tmp_cksum = eck->zec_cksum;
+			eck->zec_cksum = bp->blk_cksum;
+		}
+
 		eck->zec_magic = ZEC_MAGIC;
-		ci->ci_func[0](abd, size, spa->spa_cksum_tmpls[checksum],
-		    &cksum);
-		eck->zec_cksum = cksum;
+		final_cksum = &eck->zec_cksum;
 	} else {
-		ci->ci_func[0](abd, size, spa->spa_cksum_tmpls[checksum],
-		    &bp->blk_cksum);
+		final_cksum = &bp->blk_cksum;
+	}
+
+	ci->ci_func[0](abd, size, spa->spa_cksum_tmpls[checksum],
+	    &cksum);
+
+	if (bp != NULL && BP_IS_ENCRYPTED(bp)) {
+		/*
+		 * Weak checksums do not have their entropy spread evenly
+		 * across the bits of the checksum. Therefore, when truncating
+		 * a weak checksum we XOR the first 2 words with the last 2 so
+		 * that we don't "lose" any entropy unnecessarily.
+		 */
+		if (!(ci->ci_flags & ZCHECKSUM_FLAG_DEDUP)) {
+			cksum.zc_word[0] ^= cksum.zc_word[2];
+			cksum.zc_word[1] ^= cksum.zc_word[3];
+		}
+
+		final_cksum->zc_word[0] = cksum.zc_word[0];
+		final_cksum->zc_word[1] = cksum.zc_word[1];
+
+		/*
+		 * If this is an encrypted ZIL block we overwrote the MAC with
+		 * the verifier before we performed the checksum. Restore it
+		 * now from the copy we saved.
+		 */
+		if (ci->ci_flags & ZCHECKSUM_FLAG_EMBEDDED) {
+			ASSERT3U(checksum, ==, ZIO_CHECKSUM_ZILOG2);
+			final_cksum->zc_word[2] = tmp_cksum.zc_word[2];
+			final_cksum->zc_word[3] = tmp_cksum.zc_word[3];
+		}
+	} else {
+		*final_cksum = cksum;
 	}
 }
 
@@ -408,6 +443,32 @@ zio_checksum_error_impl(spa_t *spa, blkptr_t *bp, enum zio_checksum checksum,
 		expected_cksum = bp->blk_cksum;
 		ci->ci_func[byteswap](abd, size,
 		    spa->spa_cksum_tmpls[checksum], &actual_cksum);
+	}
+
+	if (info != NULL) {
+		info->zbc_expected = expected_cksum;
+		info->zbc_actual = actual_cksum;
+		info->zbc_checksum_name = ci->ci_name;
+		info->zbc_byteswapped = byteswap;
+		info->zbc_injected = 0;
+		info->zbc_has_cksum = 1;
+	}
+
+	/*
+	 * MAC checksums are a special case since half of this checksum will
+	 * actually be the encryption MAC. This will be verified by the
+	 * decryption process, so we just check the real checksum now.
+	 */
+	if (bp != NULL && BP_IS_ENCRYPTED(bp)) {
+		if (!(ci->ci_flags & ZCHECKSUM_FLAG_DEDUP)) {
+			actual_cksum.zc_word[0] ^= actual_cksum.zc_word[2];
+			actual_cksum.zc_word[1] ^= actual_cksum.zc_word[3];
+		}
+
+		actual_cksum.zc_word[2] = 0;
+		actual_cksum.zc_word[3] = 0;
+		expected_cksum.zc_word[2] = 0;
+		expected_cksum.zc_word[3] = 0;
 	}
 
 	if (info != NULL) {
