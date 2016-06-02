@@ -45,6 +45,7 @@ SUBDIRS = zdb \
 	zfs_destroy \
 	zfs_get \
 	zfs_inherit \
+	zfs_key \
 	zfs_mount \
 	zfs_promote \
 	zfs_property \

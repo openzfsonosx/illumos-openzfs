@@ -48,6 +48,7 @@ dir path=opt/zfs-tests/tests/functional/cli_root/zfs_create
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_destroy
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_get
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_inherit
+dir path=opt/zfs-tests/tests/functional/cli_root/zfs_key
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_mount
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_promote
 dir path=opt/zfs-tests/tests/functional/cli_root/zfs_property
@@ -509,6 +510,9 @@ file \
     path=opt/zfs-tests/tests/functional/cli_root/zfs_create/zfs_create_013_pos \
     mode=0555
 file \
+    path=opt/zfs-tests/tests/functional/cli_root/zfs_create/zfs_create_014_pos \
+    mode=0555
+file \
     path=opt/zfs-tests/tests/functional/cli_root/zfs_create/zfs_create_common.kshlib \
     mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_destroy/cleanup \
@@ -606,6 +610,28 @@ file \
     mode=0555
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zfs_inherit/zfs_inherit_003_pos \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/cleanup mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/key.cfg mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/setup mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_001_pos \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_002_neg \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_003_pos \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_004_neg \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_005_pos \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_006_neg \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_007_pos \
+    mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_008_neg \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zfs_key/zfs_key_common.kshlib \
     mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_mount/cleanup mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_mount/setup mode=0555
@@ -1141,6 +1167,9 @@ file \
     mode=0555
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zpool_create/zpool_create_023_neg \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zpool_create/zpool_create_024_pos \
     mode=0555
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zpool_create/zpool_create_features_001_pos \

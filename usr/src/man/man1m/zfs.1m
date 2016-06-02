@@ -539,6 +539,10 @@ The total number of filesystems and volumes that exist under this location in
 the dataset tree. This value is only available when a
 .Sy filesystem_limit
 has been set somewhere in the tree under which the dataset resides.
+.It Sy keystatus
+Indicates if an encryption key is currently loaded into ZFS. The
+possible values are \fBnone\fR, \fBavailable\fR, and
+\fBunavaliable\fR. See \fBzfs key -l\fR and \fBzfs key -u\fR.
 .It Sy logicalreferenced
 The amount of space that is
 .Qq logically
@@ -1023,6 +1027,44 @@ option.
 Controls whether device nodes can be opened on this file system. The default
 value is
 .Sy on .
+.It Sy encryption Ns = Ns Sy on Ns | Ns Sy off Ns | Ns Sy aes-128-ccm Ns | Ns Sy aes-192-ccm Ns | Ns Sy aes-256-ccm Ns | Ns Sy aes-128-gcm Ns | Ns Sy Baes-192-gcm Ns | Ns Sy aes-256-gcm
+Controls the encryption cipher suite (block cipher, key length, and
+mode) used for this dataset. Requires the encryption feature to be
+enabled on the pool. Requires a keysource to be set at dataset
+creation time.
+.Pp
+Selecting \fBencryption\fR=\fBon\fR when creating a dataset indicates
+that the current default encryption suite will be selected, which is
+currently \fBaes-256-ccm\fR. In order to provide consistent data
+protection, encryption must be specified at dataset creation time and
+it cannot be changed afterwards.
+.Pp
+The \fBencryption\fR property is inherited by child datasets by
+default. All inheriting datasets will be accessible when the root key
+is mounted. A child dataset may also set encryption locally, which
+will indicate that it should have a separate key and \fBkeysource\fR
+from the parent. Regardless, all children of an encrypted dataset must
+also be encrypted.
+.Pp
+For more details and caveats about encryption see
+\fBzpool-features\fR.
+.It Sy keysource Ns = Ns Em raw Ns | Ns Sy hex Ns | Ns Em passphrase,prompt Ns | Ns Em file://<absolute file path>
+Controls what format the user's encryption key will be provided as and
+where it should be loaded from. This property is only set when the
+dataset is encrypted.
+.Pp
+Raw keys and hex keys must be 32 bytes long (regardless of the chosen
+encryption suite) and must be randomly generated. Passphrases must be
+between 8 and 64 bytes long and will be processed through PBKDF2
+before being used (see the \fBpbkdf2iters\fR property). Even though
+the encryption suite cannot be changed after dataset creation, the
+keysource can be with \fBzfs key -c\fR. If prompt is selected as the
+key location ZFS will ask for the key at the command prompt when it is
+required (\fBzfs mount\fR and \fBzfs key -l\fR). If \fBfile\fR is
+selected, the key will be loaded from the specified absolute file
+path. The key may also be passed in via STDIN, but users should be
+careful not to place keys which should be kept secret on the command
+line.
 .It Sy exec Ns = Ns Sy on Ns | Ns Sy off
 Controls whether processes can be executed from within this file system. The
 default value is
@@ -1069,6 +1111,20 @@ file system is umounted and remounted. See
 for more information on
 .Sy nbmand
 mounts.
+.It Sy pbkdf2iters Ns = Ns Sy iterations
+Controls the number of PBKDF2 iterations that a \fBpassphrase\fR
+encryption key should be run through when processing it into an
+encryption key. This property is only defined when encryption is
+enabled and a \fBpassphrase\fR key is selected. The goal of PBKDF2 is
+to significantly increase the computational difficulty needed to brute
+force a user's passphrase. This is accomplished by forcing the
+attacker to run each passphrase through a computationally expensive
+hashing function many times before they arrive at the resulting key. A
+user who actually knows the passphrase will only have to pay this cost
+once. As CPUs become better at processing, this number should be
+raised to ensure that a brute force attack is still not possible. The
+current default (if not otherwise specified) is \fB100000\fR This may
+be changed with \fBzfs key -c\fR.
 .It Sy primarycache Ns = Ns Sy all Ns | Ns Sy none Ns | Ns Sy metadata
 Controls what is cached in the primary cache
 .Pq ARC .
@@ -3146,7 +3202,47 @@ Give more parsable tab-separated output, without header lines and without
 arrows.
 .It Fl t
 Display the path's inode change time as the first column of output.
+.Pp
 .El
+.It Xo
+.Nm
+.Cm key
+.Fl l
+.Ar filesystem Ns | Ns Ar volume
+.Xc
+Loads a key into ZFS so that the dataset and all of its children that
+inherit the \fBencryption\fR property may be accessed. The key will be
+expected in the format and location specified by the \fBkeysource\fR
+property. Loading a key alone will not automatically mount the
+dataset. If that functionality is desired, \fBzfs mount\fR will ask
+for the key and mount the dataset. When a key is loaded the
+\fBkeystatus\fR property will be set to available.
+.It Xo
+.Nm
+.Cm key
+.Fl u
+.Ar filesystem Ns | Ns Ar volume
+.Xc
+Unloads a key from ZFS, removing the ability to access the dataset and
+all of its children that inherit the \fBencryption\fR property. This
+requires that the dataset is not currently open or mounted. When a key
+is unloaded the keystatus property will be set to \fBunavailable\fR.
+.It Xo
+.Nm
+.Cm key
+.Fl c
+.Op Fl o Sy keysource Ns = Ns Ar keysource
+.Op Fl o Sy pbkdf2iters Ns = Ns Ar iterations
+.Ar filesystem Ns | Ns Ar volume
+.Xc
+Allows a user to change the encryption key used to access a
+dataset. This command requires that the existing key for the dataset
+is already loaded into ZFS. This command may also be used to change
+the \fBpbkdf2iters\fR and / or \fBkeysource\fR properties as
+needed. If the dataset was previously inheriting the \fBencryption\fR
+property when this command is run it will now be locally set,
+indicating that this dataset must have its key loaded separately from
+the parent.
 .El
 .Sh EXIT STATUS
 The

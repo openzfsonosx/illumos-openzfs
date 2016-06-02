@@ -979,7 +979,8 @@ zfsvfs_create(const char *osname, zfsvfs_t **zfvp)
 	 * We claim to always be readonly so we can open snapshots;
 	 * other ZPL code will prevent us from writing to snapshots.
 	 */
-	error = dmu_objset_own(osname, DMU_OST_ZFS, B_TRUE, zfsvfs, &os);
+	error = dmu_objset_own(osname, DMU_OST_ZFS, B_TRUE, B_TRUE, zfsvfs,
+	    &os);
 	if (error) {
 		kmem_free(zfsvfs, sizeof (zfsvfs_t));
 		return (error);
