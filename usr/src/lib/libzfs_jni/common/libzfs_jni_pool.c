@@ -407,7 +407,7 @@ populate_ImportablePoolBean(JNIEnv *env, ImportablePoolBean_t *bean,
 
 	(*env)->CallVoidMethod(env, object->object,
 	    pool_stats->method_setPoolStatus,
-	    zjni_pool_status_to_obj(env, zpool_import_status(config, &c)));
+	    zjni_pool_status_to_obj(env, zpool_import_status(config, &c, NULL)));
 
 	(*env)->CallVoidMethod(env, object->object,
 	    pool_stats->method_setPoolVersion, (jlong)version);
