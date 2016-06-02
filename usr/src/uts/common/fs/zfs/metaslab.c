@@ -3033,10 +3033,10 @@ find_valid_metaslab(metaslab_group_t *mg, uint64_t activation_weight,
 		}
 
 		/*
-			 * If the selected metaslab is condensing or being
-			 * initialized, skip it.
+		 * If the selected metaslab is condensing or being
+		 * initialized, skip it.
 		 */
-			if (msp->ms_condensing || msp->ms_initializing > 0)
+		if (msp->ms_condensing || msp->ms_initializing > 0)
 			continue;
 
 		*was_active = msp->ms_allocator != -1;
