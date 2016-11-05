@@ -164,10 +164,11 @@ done
 VDEV_FILE=$(mktemp /tmp/tmp.XXXXXX)
 
 log_must $MKFILE -n 128M $VDEV_FILE
-log_must $ZPOOL create testpool $VDEV_FILE
-log_must $ZFS create testpool/testfs
-ID=$($ZPOOL get -Ho value guid testpool)
-log_must $ZPOOL export testpool
-log_mustnot $ZPOOL import $(echo $ID) $($PRINTF "%*s\n" 250 "" | $TR ' ' 'c')
+log_must $ZPOOL create overflow $VDEV_FILE
+log_must $ZFS create overflow/testfs
+log_must $ZPOOL export overflow
+ID=$($ZPOOL get -Ho value guid overflow)
+log_mustnot $ZPOOL import -d /tmp $(echo $ID) \
+    $($PRINTF "%*s\n" 250 "" | $TR ' ' 'c')
 
 log_pass "Successfully imported and renamed a ZPOOL"

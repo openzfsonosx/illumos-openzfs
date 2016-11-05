@@ -26,8 +26,8 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
 # Copyright 2016 Nexenta Systems, Inc.
+# Copyright (c) 2012, 2015 by Delphix. All rights reserved.
 #
 
 
@@ -476,8 +476,6 @@ typeset acl
 typeset target
 typeset -i passthrough=0
 typeset -i flag=0
-cwd=$PWD
-cd $TESTDIR
 
 for mode in "${aclmode_flag[@]}"; do
 	log_must $ZFS set aclmode=$mode $TESTPOOL/$TESTFS

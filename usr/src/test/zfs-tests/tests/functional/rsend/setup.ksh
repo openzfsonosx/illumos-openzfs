@@ -26,7 +26,7 @@
 #
 
 #
-# Copyright (c) 2013, 2014 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2015 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/tests/functional/rsend/rsend.kshlib
@@ -37,6 +37,7 @@ verify_disk_count "$DISKS" 2
 if is_global_zone ; then
 	log_must $ZPOOL create $POOL $DISK1
 	log_must $ZPOOL create $POOL2 $DISK2
+	log_must $ZPOOL create $POOL3 $DISK3
 fi
 log_must $MKDIR $BACKDIR $TESTDIR
 
