@@ -12,19 +12,18 @@
 #
 
 #
-# Copyright (c) 2014, 2015 by Delphix. All rights reserved.
+# Copyright (c) 2015 by Delphix. All rights reserved.
 #
 
-. $STF_SUITE/include/libtest.shlib
 . $STF_SUITE/tests/functional/rsend/rsend.kshlib
 
 #
 # Description:
-# Verify resumability of a full and incremental ZFS send/receive with the
-# -e (embedded) flag in the presence of a corrupted stream.
+# Verify resumability of full and incremental ZFS send/receive with the -c
+# (compress) flag in the presence of a corrupted stream.
 #
 # Strategy:
-# 1. Start a full ZFS send with the -e flag (embedded), redirect output to
+# 1. Start a full ZFS send with the -c flag (compress), redirect output to
 #    a file
 # 2. Mess up the contents of the stream state file on disk
 # 3. Try ZFS receive, which should fail with a checksum mismatch error
@@ -35,9 +34,6 @@
 
 verify_runnable "both"
 
-log_assert "Verify resumability of a full and incremental ZFS send/receive " \
-    "with the -e (embedded) flag"
-
 sendfs=$POOL/sendfs
 recvfs=$POOL2/recvfs
 streamfs=$POOL/stream
@@ -45,9 +41,8 @@ streamfs=$POOL/stream
 log_onexit resume_cleanup $sendfs $streamfs
 
 test_fs_setup $sendfs $recvfs
-resume_test "$ZFS send -v -e $sendfs@a" $streamfs $recvfs
-resume_test "$ZFS send -v -e -i @a $sendfs@b" $streamfs $recvfs
+resume_test "$ZFS send -c -v $sendfs@a" $streamfs $recvfs
+resume_test "$ZFS send -c -v -i @a $sendfs@b" $streamfs $recvfs
 file_check $sendfs $recvfs
 
-log_pass "Verify resumability of a full and incremental ZFS send/receive " \
-    "with the -e (embedded) flag"
+log_pass "Compressed send streams can be resumed if interrupted"
