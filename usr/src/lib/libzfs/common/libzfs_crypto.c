@@ -82,7 +82,7 @@ static int caught_interrupt;
 static zfs_keylocation_t
 zfs_prop_parse_keylocation(const char *str)
 {
-	if (strlen(str) == 6 && strncmp("prompt", str, 6) == 0)
+	if (strcmp("prompt", str) == 0)
 		return (ZFS_KEYLOCATION_PROMPT);
 	else if (strlen(str) > 8 && strncmp("file:///", str, 8) == 0)
 		return (ZFS_KEYLOCATION_URI);
@@ -279,8 +279,17 @@ get_key_material(libzfs_handle_t *hdl, boolean_t do_verify, boolean_t newkey,
 	switch (keyloc) {
 	case ZFS_KEYLOCATION_PROMPT:
 		fd = stdin;
-		if (isatty(fileno(fd)))
+		if (isatty(fileno(fd))) {
 			can_retry = B_TRUE;
+
+			/* raw keys cannot be entered on the terminal */
+			if (keyformat == ZFS_KEYFORMAT_RAW) {
+				ret = EINVAL;
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "Cannot enter raw keys on the terminal"));
+				goto error;
+			}
+		}
 		break;
 	case ZFS_KEYLOCATION_URI:
 		fd = fopen(&keylocation[7], "r");
@@ -821,22 +830,15 @@ zfs_crypto_create(libzfs_handle_t *hdl, char *parent_name, nvlist_t *props,
 
 	/*
 	 * Specifying a keylocation implies this will be a new encryption root.
-	 * Check that a keyformat is also specified.
+	 * Check that a keyformat is also specified. These must be provided
+	 * together.
 	 */
-	if (keylocation != NULL && keyformat == ZFS_KEYFORMAT_NONE) {
+	if ((keyformat == ZFS_KEYFORMAT_NONE) != (keylocation == NULL)) {
 		ret = EINVAL;
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-		    "Keyformat required for new encryption root."));
+		    "Keyformat and keylocation are both required for a new "
+		    "encryption root."));
 		goto out;
-	}
-
-	/* default to prompt if no location is specified */
-	if (keyformat != ZFS_KEYFORMAT_NONE && keylocation == NULL) {
-		keylocation = "prompt";
-		ret = nvlist_add_string(props,
-		    zfs_prop_to_name(ZFS_PROP_KEYLOCATION), keylocation);
-		if (ret != 0)
-			goto out;
 	}
 
 	/*
@@ -942,22 +944,15 @@ zfs_crypto_clone(libzfs_handle_t *hdl, zfs_handle_t *origin_zhp,
 
 	/*
 	 * Specifying a keylocation implies this will be a new encryption root.
-	 * Check that a keyformat is also specified.
+	 * Check that a keyformat is also specified. These must be provided
+	 * together.
 	 */
-	if (keylocation != NULL && keyformat == ZFS_KEYFORMAT_NONE) {
+	if ((keyformat == ZFS_KEYFORMAT_NONE) != (keylocation == NULL)) {
 		ret = EINVAL;
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-		    "Keyformat required for new encryption root."));
+		    "Keyformat and keylocation are both required for a new "
+		    "encryption root."));
 		goto out;
-	}
-
-	/* default to prompt if no location is specified */
-	if (keyformat != ZFS_KEYFORMAT_NONE && keylocation == NULL) {
-		keylocation = "prompt";
-		ret = nvlist_add_string(props,
-		    zfs_prop_to_name(ZFS_PROP_KEYLOCATION), keylocation);
-		if (ret != 0)
-			goto out;
 	}
 
 	/*
