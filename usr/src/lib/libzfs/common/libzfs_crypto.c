@@ -40,7 +40,7 @@
 #include "zfeature_common.h"
 
 /*
- * User keys are used to decrypt the master encyrption keys of a dataset. This
+ * User keys are used to decrypt the master encryption keys of a dataset. This
  * indirection allows a user to change his / her access key without having to
  * re-encrypt the entire dataset. User keys can be provided in one of several
  * ways. Raw keys are simlply given to the kernel as is. Similarly, hex keys
@@ -548,7 +548,7 @@ encryption_feature_is_enabled(zpool_handle_t *zph)
 static int
 populate_create_encryption_params_nvlists(libzfs_handle_t *hdl,
     zfs_handle_t *zhp, boolean_t newkey, zfs_keyformat_t keyformat,
-    char *keylocation, nvlist_t *props, nvlist_t *hidden_args)
+    char *keylocation, nvlist_t *props, uint8_t **wkeydata, uint_t *wkeylen)
 {
 	int ret;
 	uint64_t iters, salt = 0;
@@ -621,15 +621,10 @@ populate_create_encryption_params_nvlists(libzfs_handle_t *hdl,
 	if (ret != 0)
 		goto error;
 
-	/* add the derived key to the properties list */
-	ret = nvlist_add_uint8_array(hidden_args, "wkeydata", key_data,
-	    WRAPPING_KEY_LEN);
-	if (ret != 0)
-		goto error;
-
 	free(key_material);
-	free(key_data);
 
+	*wkeydata = key_data;
+	*wkeylen = WRAPPING_KEY_LEN;
 	return (0);
 
 error:
@@ -637,6 +632,9 @@ error:
 		free(key_material);
 	if (key_data != NULL)
 		free(key_data);
+
+	*wkeydata = NULL;
+	*wkeylen = 0;
 	return (ret);
 }
 
@@ -705,7 +703,7 @@ zfs_crypto_is_encryption_root(zfs_handle_t *zhp, boolean_t *enc_root)
 
 int
 zfs_crypto_create(libzfs_handle_t *hdl, char *parent_name, nvlist_t *props,
-    nvlist_t *pool_props, nvlist_t **hidden_args)
+    nvlist_t *pool_props, uint8_t **wkeydata_out, uint_t *wkeylen_out)
 {
 	int ret;
 	char errbuf[1024];
@@ -713,7 +711,8 @@ zfs_crypto_create(libzfs_handle_t *hdl, char *parent_name, nvlist_t *props,
 	uint64_t keyformat = ZFS_KEYFORMAT_NONE;
 	char *keylocation = NULL;
 	zfs_handle_t *pzhp = NULL;
-	nvlist_t *ha = NULL;
+	uint8_t *wkeydata = NULL;
+	uint_t wkeylen = 0;
 	boolean_t local_crypt = B_TRUE;
 
 	(void) snprintf(errbuf, sizeof (errbuf),
@@ -735,9 +734,10 @@ zfs_crypto_create(libzfs_handle_t *hdl, char *parent_name, nvlist_t *props,
 		/* get a reference to parent dataset */
 		pzhp = make_dataset_handle(hdl, parent_name);
 		if (pzhp == NULL) {
+			ret = ENOENT;
 			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
 			    "Failed to lookup parent."));
-			return (ENOENT);
+			goto out;
 		}
 
 		/* Lookup parent's crypt */
@@ -844,10 +844,9 @@ zfs_crypto_create(libzfs_handle_t *hdl, char *parent_name, nvlist_t *props,
 	 * encryption root. Populate the encryption params.
 	 */
 	if (keylocation != NULL) {
-		ha = fnvlist_alloc();
-
 		ret = populate_create_encryption_params_nvlists(hdl, NULL,
-		    B_FALSE, keyformat, keylocation, props, ha);
+		    B_FALSE, keyformat, keylocation, props, &wkeydata,
+		    &wkeylen);
 		if (ret != 0)
 			goto out;
 	}
@@ -855,28 +854,32 @@ zfs_crypto_create(libzfs_handle_t *hdl, char *parent_name, nvlist_t *props,
 	if (pzhp != NULL)
 		zfs_close(pzhp);
 
-	*hidden_args = ha;
+	*wkeydata_out = wkeydata;
+	*wkeylen_out = wkeylen;
 	return (0);
 
 out:
 	if (pzhp != NULL)
 		zfs_close(pzhp);
-	if (ha != NULL)
-		nvlist_free(ha);
+	if (wkeydata != NULL)
+		free(wkeydata);
 
-	*hidden_args = NULL;
+	*wkeydata_out = NULL;
+	*wkeylen_out = 0;
 	return (ret);
 }
 
 int
 zfs_crypto_clone(libzfs_handle_t *hdl, zfs_handle_t *origin_zhp,
-    char *parent_name, nvlist_t *props, nvlist_t **hidden_args)
+    char *parent_name, nvlist_t *props, uint8_t **wkeydata_out,
+    uint_t *wkeylen_out)
 {
 	int ret;
 	char errbuf[1024];
 	uint64_t keyformat = ZFS_KEYFORMAT_NONE;
 	char *keylocation = NULL;
-	nvlist_t *ha = NULL;
+	uint8_t *wkeydata = NULL;
+	uint_t wkeylen = 0;
 	zfs_handle_t *pzhp = NULL;
 	uint64_t crypt, pcrypt, ocrypt, okey_status;
 
@@ -982,26 +985,27 @@ zfs_crypto_clone(libzfs_handle_t *hdl, zfs_handle_t *origin_zhp,
 
 	/* prepare the key if needed */
 	if (keylocation != NULL) {
-		ha = fnvlist_alloc();
-
 		ret = populate_create_encryption_params_nvlists(hdl, NULL,
-		    B_FALSE, keyformat, keylocation, props, ha);
+		    B_FALSE, keyformat, keylocation, props, &wkeydata,
+		    &wkeylen);
 		if (ret != 0)
 			goto out;
 	}
 
 	zfs_close(pzhp);
 
-	*hidden_args = ha;
+	*wkeydata_out = wkeydata;
+	*wkeylen_out = wkeylen;
 	return (0);
 
 out:
 	if (pzhp != NULL)
 		zfs_close(pzhp);
-	if (ha != NULL)
-		nvlist_free(ha);
+	if (wkeydata != NULL)
+		free(wkeydata);
 
-	*hidden_args = NULL;
+	*wkeydata_out = NULL;
+	*wkeylen_out = 0;
 	return (ret);
 }
 
@@ -1093,7 +1097,6 @@ zfs_crypto_load_key(zfs_handle_t *zhp, boolean_t noop, char *alt_keylocation)
 	char *keylocation = NULL;
 	uint8_t *key_material = NULL, *key_data = NULL;
 	size_t key_material_len;
-	nvlist_t *crypto_args = NULL;
 	zprop_source_t keylocation_srctype;
 	boolean_t can_retry = B_FALSE, correctible = B_FALSE;
 
@@ -1181,15 +1184,8 @@ try_again:
 
 	correctible = B_FALSE;
 	
-	/* put the key in an nvlist and pass to the ioctl */
-	crypto_args = fnvlist_alloc();
-
-	ret = nvlist_add_uint8_array(crypto_args, "wkeydata", key_data,
-	    WRAPPING_KEY_LEN);
-	if (ret != 0)
-		goto error;
-
-	ret = lzc_load_key(zhp->zfs_name, noop, crypto_args);
+	/* pass the wrapping key and noop flag to the ioctl */
+	ret = lzc_load_key(zhp->zfs_name, noop, key_data, WRAPPING_KEY_LEN);
 	if (ret != 0) {
 		switch (ret) {
 		case EINVAL:
@@ -1215,7 +1211,6 @@ try_again:
 		goto error;
 	}
 
-	nvlist_free(crypto_args);
 	free(key_material);
 	free(key_data);
 
@@ -1227,8 +1222,6 @@ error:
 		free(key_material);
 	if (key_data != NULL)
 		free(key_data);
-	if (crypto_args != NULL)
-		nvlist_free(crypto_args);
 
 	/*
 	 * Here we decide if it is ok to allow the user to retry entering their
@@ -1384,7 +1377,8 @@ zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
 	char errbuf[1024];
 	boolean_t is_encroot;
 	nvlist_t *props = NULL;
-	nvlist_t *crypto_args = NULL;
+	uint8_t *wkeydata = NULL;
+	uint_t wkeylen = 0;
 	uint64_t crypt, pcrypt, keystatus, pkeystatus;
 	uint64_t keyformat = ZFS_KEYFORMAT_NONE;
 	zfs_handle_t *pzhp = NULL;
@@ -1449,11 +1443,10 @@ zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
 			keylocation = prop_keylocation;
 		}
 
-		/* populate an nvlist with the new wrapping key */
-		crypto_args = fnvlist_alloc();
-
+		/* fetch the new wrapping key and associated properties */
 		ret = populate_create_encryption_params_nvlists(zhp->zfs_hdl,
-		    zhp, B_TRUE, keyformat, keylocation, props, crypto_args);
+		    zhp, B_TRUE, keyformat, keylocation, props, &wkeydata,
+		    &wkeylen);
 		if (ret != 0)
 			goto error;
 	} else {
@@ -1514,7 +1507,7 @@ zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
 	}
 
 	/* call the ioctl */
-	ret = lzc_change_key(zhp->zfs_name, props, crypto_args);
+	ret = lzc_change_key(zhp->zfs_name, props, wkeydata, wkeylen);
 	if (ret != 0) {
 		switch (ret) {
 		case EINVAL:
@@ -1533,8 +1526,8 @@ zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
 		zfs_close(pzhp);
 	if (props != NULL)
 		nvlist_free(props);
-	if (crypto_args != NULL)
-		nvlist_free(crypto_args);
+	if (wkeydata != NULL)
+		free(wkeydata);
 
 	return (ret);
 
@@ -1543,8 +1536,8 @@ error:
 		zfs_close(pzhp);
 	if (props != NULL)
 		nvlist_free(props);
-	if (crypto_args != NULL)
-		nvlist_free(crypto_args);
+	if (wkeydata != NULL)
+		free(wkeydata);
 
 	(void) zfs_error(zhp->zfs_hdl, EZFS_CRYPTOFAILED, errbuf);
 	return (ret);

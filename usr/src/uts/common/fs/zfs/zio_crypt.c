@@ -31,9 +31,7 @@
  * BLOCK ENCRYPTION PARAMETERS:
  * Encryption Algorithm (crypt):
  * The encryption algorithm and mode we are going to use. We currently support
- * AES-GCM and AES-CCM in 128, 192, and 256 bits. All encryption parameters are
- * stored in little endian format (regardless of the host machine's byteorder)
- * on-disk and in memory.
+ * AES-GCM and AES-CCM in 128, 192, and 256 bits.
  *
  * Plaintext:
  * The unencrypted data that we want to encrypt
@@ -754,55 +752,89 @@ error:
 void
 zio_crypt_encode_params_bp(blkptr_t *bp, uint8_t *salt, uint8_t *iv)
 {
-	uint32_t *iv2 = (uint32_t *)(iv + sizeof (uint64_t));
+	uint32_t val32;
 
 	ASSERT(BP_IS_ENCRYPTED(bp));
-	bp->blk_dva[2].dva_word[0] = LE_64(*((uint64_t *)salt));
 
-	bp->blk_dva[2].dva_word[1] = LE_64(*((uint64_t *)iv));
-	BP_SET_IV2(bp, LE_32(*iv2));
+	bcopy(salt, &bp->blk_dva[2].dva_word[0], sizeof (uint64_t));
+	bcopy(iv, &bp->blk_dva[2].dva_word[1], sizeof (uint64_t));
+	bcopy(iv + sizeof (uint64_t), &val32, sizeof (uint32_t));
+	BP_SET_IV2(bp, val32);
 }
 
 void
 zio_crypt_decode_params_bp(const blkptr_t *bp, uint8_t *salt, uint8_t *iv)
 {
-	uint32_t *iv2 = (uint32_t *)(iv + sizeof (uint64_t));
+	uint64_t val64;
+	uint32_t val32;
 
 	ASSERT(BP_IS_ENCRYPTED(bp));
-	*((uint64_t *)salt) = LE_64(bp->blk_dva[2].dva_word[0]);
 
-	*((uint64_t *)iv) = LE_64(bp->blk_dva[2].dva_word[1]);
-	*((uint32_t *)iv2) = LE_32((uint32_t)BP_GET_IV2(bp));
+	if (!BP_SHOULD_BYTESWAP(bp)) {
+		bcopy(&bp->blk_dva[2].dva_word[0], salt, sizeof (uint64_t));
+		bcopy(&bp->blk_dva[2].dva_word[1], iv, sizeof (uint64_t));
+
+		val32 = (uint32_t)BP_GET_IV2(bp);
+		bcopy(&val32, iv + sizeof (uint64_t), sizeof (uint32_t));
+	} else {
+		val64 = BSWAP_64(bp->blk_dva[2].dva_word[0]);
+		bcopy(&val64, salt, sizeof (uint64_t));
+
+		val64 = BSWAP_64(bp->blk_dva[2].dva_word[1]);
+		bcopy(&val64, iv, sizeof (uint64_t));
+
+		val32 = BSWAP_32((uint32_t)BP_GET_IV2(bp));
+		bcopy(&val32, iv + sizeof (uint64_t), sizeof (uint32_t));
+	}
 }
 
 void
 zio_crypt_encode_mac_bp(blkptr_t *bp, uint8_t *mac)
 {
 	ASSERT(BP_IS_ENCRYPTED(bp));
-	bp->blk_cksum.zc_word[2] = LE_64(((uint64_t *)mac)[0]);
-	bp->blk_cksum.zc_word[3] = LE_64(((uint64_t *)mac)[1]);
+
+	bcopy(mac, &bp->blk_cksum.zc_word[2], sizeof (uint64_t));
+	bcopy(mac + sizeof (uint64_t), &bp->blk_cksum.zc_word[3],
+	    sizeof (uint64_t));
 }
 
 void
 zio_crypt_decode_mac_bp(const blkptr_t *bp, uint8_t *mac)
 {
+	uint64_t val64;
+
 	ASSERT(BP_IS_ENCRYPTED(bp));
-	((uint64_t *)mac)[0] = LE_64(bp->blk_cksum.zc_word[2]);
-	((uint64_t *)mac)[1] = LE_64(bp->blk_cksum.zc_word[3]);
+
+	if (!BP_SHOULD_BYTESWAP(bp)) {
+		bcopy(&bp->blk_cksum.zc_word[2], mac, sizeof (uint64_t));
+		bcopy(&bp->blk_cksum.zc_word[3], mac + sizeof (uint64_t),
+		    sizeof (uint64_t));
+	} else {
+		val64 = BSWAP_64(bp->blk_cksum.zc_word[2]);
+		bcopy(&val64, mac, sizeof (uint64_t));
+
+		val64 = BSWAP_64(bp->blk_cksum.zc_word[3]);
+		bcopy(&val64, mac + sizeof (uint64_t), sizeof (uint64_t));
+	}
 }
 
 void
-zio_crypt_encode_mac_zil(const void *data, uint8_t *mac)
+zio_crypt_encode_mac_zil(void *data, uint8_t *mac)
 {
-	uint64_t *zc_mac = &((zil_chain_t *)data)->zc_mac;
-	*zc_mac = LE_64(*((uint64_t *)mac));
+	zil_chain_t *zc = data;
+	bcopy(mac, &zc->zc_mac, sizeof (uint64_t));
 }
 
 void
 zio_crypt_decode_mac_zil(const void *data, uint8_t *mac)
 {
-	uint64_t *zc_mac = &((zil_chain_t *)data)->zc_mac;
-	*((uint64_t *)mac) = LE_64(*zc_mac);
+	/*
+	 * The ZIL MAC is embedded in the block it protects, which will
+	 * not have been byteswapped by the time this function hsa been called.
+	 * As a result, we don't need to worry about byteswapping the MAC.
+	 */
+	const zil_chain_t *zc = data;
+	bcopy(&zc->zc_mac, mac, sizeof (uint64_t));
 }
 
 /*
@@ -858,9 +890,11 @@ zio_crypt_init_uios_zil(boolean_t encrypt, uint8_t *plainbuf,
     uint_t *enc_len)
 {
 	int ret;
+	boolean_t byteswap;
+	uint64_t txtype;
 	uint_t nr_src, nr_dst, lr_len, crypt_len, nr_iovecs = 0, total_len = 0;
 	iovec_t *src_iovecs = NULL, *dst_iovecs = NULL;
-	uint8_t *src, *dst, *slrp, *dlrp, *end;
+	uint8_t *src, *dst, *slrp, *dlrp, *blkend;
 	zil_chain_t *zilc;
 	lr_t *lr;
 
@@ -879,17 +913,32 @@ zio_crypt_init_uios_zil(boolean_t encrypt, uint8_t *plainbuf,
 
 	/* find the start and end record of the log block */
 	zilc = (zil_chain_t *)src;
-	end = src + zilc->zc_nused;
 	slrp = src + sizeof (zil_chain_t);
 
+	/* determine if we need to byteswap values we use for parsing */
+	if (zilc->zc_eck.zec_magic == BSWAP_64(ZEC_MAGIC)) {
+		ASSERT(!encrypt);
+		byteswap = B_TRUE;
+		blkend = src + BSWAP_64(zilc->zc_nused);
+	} else {
+		byteswap = B_FALSE;
+		blkend = src + zilc->zc_nused;
+	}
+
 	/* calculate the number of encrypted iovecs we will need */
-	for (; slrp < end; slrp += lr_len) {
+	for (; slrp < blkend; slrp += lr_len) {
 		lr = (lr_t *)slrp;
-		lr_len = lr->lrc_reclen;
+
+		if (!byteswap) {
+			txtype = lr->lrc_txtype;
+			lr_len = lr->lrc_reclen;
+		} else {
+			txtype = BSWAP_64(lr->lrc_txtype);
+			lr_len = BSWAP_64(lr->lrc_reclen);
+		}
 
 		nr_iovecs++;
-		if (lr->lrc_txtype == TX_WRITE &&
-		    lr_len != sizeof (lr_write_t))
+		if (txtype == TX_WRITE && lr_len != sizeof (lr_write_t))
 			nr_iovecs++;
 	}
 
@@ -923,11 +972,18 @@ zio_crypt_init_uios_zil(boolean_t encrypt, uint8_t *plainbuf,
 	slrp = src + sizeof (zil_chain_t);
 	dlrp = dst + sizeof (zil_chain_t);
 
-	for (; slrp < end; slrp += lr_len, dlrp += lr_len) {
+	for (; slrp < blkend; slrp += lr_len, dlrp += lr_len) {
 		lr = (lr_t *)slrp;
-		lr_len = lr->lrc_reclen;
 
-		if (lr->lrc_txtype == TX_WRITE) {
+		if (!byteswap) {
+			txtype = lr->lrc_txtype;
+			lr_len = lr->lrc_reclen;
+		} else {
+			txtype = BSWAP_64(lr->lrc_txtype);
+			lr_len = BSWAP_64(lr->lrc_reclen);
+		}
+
+		if (txtype == TX_WRITE) {
 			bcopy(slrp, dlrp, sizeof (lr_t));
 			crypt_len = sizeof (lr_write_t) -
 			    sizeof (lr_t) - sizeof (blkptr_t);
@@ -1031,6 +1087,12 @@ zio_crypt_init_uios_dnode(boolean_t encrypt, uint8_t *plainbuf,
 	ddnp = (dnode_phys_t *)dst;
 
 	for (i = 0; i < max_dnp; i += sdnp[i].dn_extra_slots + 1) {
+		/*
+		 * This block may still be byteswapped. However, all of the
+		 * values we use are either uint8_t's (for which byteswapping
+		 * is a noop) or a * != 0 check, which will work regardless
+		 * of whether or not we byteswap.
+		 */
 		if (sdnp[i].dn_type != DMU_OT_NONE &&
 		    DMU_OT_IS_ENCRYPTED(sdnp[i].dn_bonustype) &&
 		    sdnp[i].dn_bonuslen != 0) {

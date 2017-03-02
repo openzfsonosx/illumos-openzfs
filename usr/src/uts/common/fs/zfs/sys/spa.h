@@ -297,10 +297,7 @@ typedef struct zio_cksum_salt {
  * normal 3. The last 32 bits are stored in the upper bits of what is usually
  * the fill count. Note that only level 0 bocks are ever encrypted (or -2 in
  * the case of ZIL blocks), which allows us to guarantee that these 32 bits
- * are not trampled over by other code (see zio_crypt.c for details). The
- * underlying encryption code looks at these values as byte arrays rather than
- * uint64_t's, so these are always stored in little-endian format regardless
- * of the host machine's native endianness.
+ * are not trampled over by other code (see zio_crypt.c for details).
  */
 
 /*

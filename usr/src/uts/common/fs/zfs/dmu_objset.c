@@ -932,11 +932,15 @@ dmu_objset_create_sync(void *arg, dmu_tx_t *tx)
 	/*
 	 * doca_userfunc() may write out some data that needs to be encrypted
 	 * if the dataset is encrypted (specifically the root directory).
-	 * However, this data won't normally be written out by the zio layer
-	 * until after this sync function has returned so we cannot remove
-	 * the key mappings until then. In this case, we call dmu_objset_sync()
+	 * We need to write this data out before the encryption key mapping is
+	 * removed by dsl_dataset_rele_flags(). However, this data won't
+	 * normally be written out by the zio layer until after this sync
+	 * function has returned. In this case, we must call dmu_objset_sync()
 	 * to ensure the encrypted data is written out before we release the
-	 * dataset.
+	 * dataset. Doing that requires that we call
+	 * dmu_objset_do_userquota_updates() to clean up open references,
+	 * which will in turn write out more encrypted data, so we must call
+	 * dmu_objset_sync() again.
 	 */
 	if (os->os_encrypted) {
 		rzio = zio_root(dp->dp_spa, NULL, NULL, ZIO_FLAG_MUSTSUCCEED);
@@ -956,8 +960,7 @@ dmu_objset_create_sync(void *arg, dmu_tx_t *tx)
 
 int
 dmu_objset_create(const char *name, dmu_objset_type_t type, uint64_t flags,
-    dsl_crypto_params_t *dcp, void (*func)(objset_t *os, void *arg,
-    cred_t *cr, dmu_tx_t *tx), void *arg)
+    dsl_crypto_params_t *dcp, dmu_objset_create_sync_func_t func, void *arg)
 {
 	dmu_objset_create_arg_t doca;
 

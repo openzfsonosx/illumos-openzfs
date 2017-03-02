@@ -287,6 +287,9 @@ void zfs_znode_byteswap(void *buf, size_t size);
 /*
  * Public routines to create, destroy, open, and close objsets.
  */
+typedef void dmu_objset_create_sync_func_t(objset_t *os, void *arg,
+    cred_t *cr, dmu_tx_t *tx);
+
 int dmu_objset_hold(const char *name, void *tag, objset_t **osp);
 int dmu_objset_own(const char *name, dmu_objset_type_t type,
     boolean_t readonly, boolean_t key_required, void *tag, objset_t **osp);
@@ -296,8 +299,8 @@ int dmu_objset_open_ds(struct dsl_dataset *ds, objset_t **osp);
 
 void dmu_objset_evict_dbufs(objset_t *os);
 int dmu_objset_create(const char *name, dmu_objset_type_t type, uint64_t flags,
-    struct dsl_crypto_params *dcp, void (*func)(objset_t *os, void *arg,
-	cred_t *cr, dmu_tx_t *tx), void *arg);
+    struct dsl_crypto_params *dcp, dmu_objset_create_sync_func_t func,
+    void *arg);
 int dmu_objset_clone(const char *name, const char *origin,
 	struct dsl_crypto_params *dcp);
 int dsl_destroy_snapshots_nvl(struct nvlist *snaps, boolean_t defer,

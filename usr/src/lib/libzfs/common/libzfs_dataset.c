@@ -3350,7 +3350,8 @@ zfs_create(libzfs_handle_t *hdl, const char *path, zfs_type_t type,
 	int ret;
 	uint64_t size = 0;
 	uint64_t blocksize = zfs_prop_default_numeric(ZFS_PROP_VOLBLOCKSIZE);
-	nvlist_t *hidden_args = NULL;
+	uint8_t *wkeydata = NULL;
+	uint_t wkeylen = 0;
 	char errbuf[1024];
 	char parent[MAXNAMELEN];
 	uint64_t zoned;
@@ -3450,15 +3451,17 @@ zfs_create(libzfs_handle_t *hdl, const char *path, zfs_type_t type,
 	}
 
 	(void) parent_name(path, parent, sizeof (parent));
-	if (zfs_crypto_create(hdl, parent, props, NULL, &hidden_args) != 0) {
+	if (zfs_crypto_create(hdl, parent, props, NULL, &wkeydata,
+	    &wkeylen) != 0) {
 		nvlist_free(props);
 		return (zfs_error(hdl, EZFS_CRYPTOFAILED, errbuf));
 	}
 
 	/* create the dataset */
-	ret = lzc_create(path, ost, props, hidden_args);
+	ret = lzc_create(path, ost, props, wkeydata, wkeylen);
 	nvlist_free(props);
-	nvlist_free(hidden_args);
+	if (wkeydata != NULL)
+		free(wkeydata);
 
 	/* check for failure */
 	if (ret != 0) {
@@ -3649,7 +3652,8 @@ zfs_clone(zfs_handle_t *zhp, const char *target, nvlist_t *props)
 	char parent[ZFS_MAX_DATASET_NAME_LEN];
 	int ret;
 	char errbuf[1024];
-	nvlist_t *hidden_args = NULL;
+	uint8_t *wkeydata = NULL;
+	uint_t wkeylen = 0;
 	libzfs_handle_t *hdl = zhp->zfs_hdl;
 	uint64_t zoned;
 
@@ -3682,12 +3686,16 @@ zfs_clone(zfs_handle_t *zhp, const char *target, nvlist_t *props)
 			return (-1);
 	}
 
-	if (zfs_crypto_clone(hdl, zhp, parent, props, &hidden_args) != 0)
+	if (zfs_crypto_clone(hdl, zhp, parent, props, &wkeydata,
+	    &wkeylen) != 0) {
+		nvlist_free(props);
 		return (zfs_error(hdl, EZFS_CRYPTOFAILED, errbuf));
+	}
 
-	ret = lzc_clone(target, zhp->zfs_name, props, hidden_args);
+	ret = lzc_clone(target, zhp->zfs_name, props, wkeydata, wkeylen);
 	nvlist_free(props);
-	nvlist_free(hidden_args);
+	if (wkeydata != NULL)
+		free(wkeydata);
 
 	if (ret != 0) {
 		switch (errno) {
@@ -4212,9 +4220,16 @@ zfs_rename(zfs_handle_t *zhp, const char *target, boolean_t recursive,
 			    "with the new name"));
 			(void) zfs_error(hdl, EZFS_EXISTS, errbuf);
 		} else if (errno == EACCES) {
-			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-			    "Only encryption roots may be moved. "
-			    "Please set a local key."));
+			if (zfs_prop_get_int(zhp, ZFS_PROP_ENCRYPTION) ==
+			    ZIO_CRYPT_OFF) {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "cannot rename an unencrypted dataset to "
+				    "be a decendent of an encrypted one"));
+			} else {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "cannot move encryption child outside of "
+				    "its encryption root"));
+			}
 			(void) zfs_error(hdl, EZFS_CRYPTOFAILED, errbuf);
 		} else {
 			(void) zfs_standard_error(zhp->zfs_hdl, errno, errbuf);

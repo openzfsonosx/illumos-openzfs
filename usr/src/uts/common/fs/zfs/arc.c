@@ -1993,6 +1993,15 @@ arc_hdr_decrypt(arc_buf_hdr_t *hdr, kmutex_t *hash_lock, spa_t *spa)
 	if (hash_lock != NULL)
 		mutex_enter(hash_lock);
 
+	/*
+	 * Check that we only have an encrypted copy of the data. This was
+	 * already checked in arc_buf_fill() as a quick check, but we do it
+	 * again now under the hash_lock to make sure nothing has changed.
+	 * If this isn't true there is no work to do so we can simply return.
+	 */
+	if (!HDR_HAS_RDATA(hdr) || hdr->b_l1hdr.b_pdata != NULL)
+		goto out_unlock;
+
 	arc_hdr_alloc_data(hdr, B_FALSE);
 
 	ret = spa_keystore_lookup_key(spa, hdr->b_crypt_hdr.b_dsobj,
@@ -2005,8 +2014,13 @@ arc_hdr_decrypt(arc_buf_hdr_t *hdr, kmutex_t *hash_lock, spa_t *spa)
 	    hdr->b_crypt_hdr.b_iv, hdr->b_crypt_hdr.b_mac,
 	    HDR_GET_PSIZE(hdr), hdr->b_l1hdr.b_pdata,
 	    hdr->b_crypt_hdr.b_rdata);
-	if (ret && ret != ZIO_NO_ENCRYPTION_NEEDED)
+	if (ret == ZIO_NO_ENCRYPTION_NEEDED) {
+// FIXME - unknown
+//		hdr_copy(hdr->b_l1hdr.b_pdata, hdr->b_crypt_hdr.b_rdata,
+//		    HDR_GET_PSIZE(hdr));
+	} else if (ret != 0) {
 		goto error;
+	}
 
 	if (HDR_GET_COMPRESS(hdr) != ZIO_COMPRESS_OFF &&
 	    !HDR_COMPRESSION_ENABLED(hdr)) {
@@ -2025,6 +2039,7 @@ arc_hdr_decrypt(arc_buf_hdr_t *hdr, kmutex_t *hash_lock, spa_t *spa)
 
 	spa_keystore_dsl_key_rele(spa, dck, FTAG);
 
+out_unlock:
 	if (hash_lock != NULL)
 		mutex_exit(hash_lock);
 
@@ -2038,7 +2053,41 @@ error:
 		arc_free_data_buf(hdr, cbuf, arc_hdr_size(hdr), hdr);
 	if (hash_lock != NULL)
 		mutex_exit(hash_lock);
+
 	return (ret);
+}
+
+/*
+ * This function is used by the dbuf code to decrypt bonus buffers in place.
+ * The dbuf code itself doesn't have any locking for decrypting a shared dnode
+ * block, so we use the hash lock here to protect against concurrent writes.
+ */
+static void
+arc_buf_untransform_in_place(arc_buf_t *buf, kmutex_t *hash_lock)
+{
+	arc_buf_hdr_t *hdr = buf->b_hdr;
+
+	if (hash_lock != NULL)
+		mutex_enter(hash_lock);
+
+	/*
+	 * Check that the buffer has not already been decrypted. We checked
+	 * this once outside the lock, which is safe because a buffer will
+	 * never go from unencrypted to encrypted, but we do it again now
+	 * that we have taken out the hash_lock.
+	 */
+	if (!ARC_BUF_ENCRYPTED(buf))
+		goto out_unlock;
+
+	zio_crypt_copy_dnode_bonus(hdr->b_l1hdr.b_pabd, buf->b_data,
+	    arc_buf_size(buf));
+	buf->b_flags &= ~ARC_BUF_FLAG_ENCRYPTED;
+	buf->b_flags &= ~ARC_BUF_FLAG_COMPRESSED;
+	hdr->b_crypt_hdr.b_ebufcnt -= 1;
+
+out_unlock:
+	if (hash_lock != NULL)
+		mutex_exit(hash_lock);
 }
 
 /*
@@ -2073,10 +2122,6 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, arc_fill_flags_t flags)
 	IMPLY(encrypted, ARC_BUF_ENCRYPTED(buf));
 	IMPLY(encrypted, ARC_BUF_COMPRESSED(buf));
 	IMPLY(encrypted, !ARC_BUF_SHARED(buf));
-	IMPLY((flags & ARC_FILL_IN_PLACE), ARC_BUF_ENCRYPTED(buf));
-	IMPLY((flags & ARC_FILL_IN_PLACE), HDR_ENCRYPT(hdr));
-	IMPLY((flags & ARC_FILL_IN_PLACE),
-	    hdr->b_crypt_hdr.b_ot == DMU_OT_DNODE);
 
 	if (encrypted) {
 		ASSERT(HDR_HAS_RDATA(hdr));
@@ -2094,36 +2139,34 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, arc_fill_flags_t flags)
 			return (error);
 	}
 
-	if (hdr_compressed == compressed) {
-		/*
-		 * There is a special case here for dnode blocks which are
-		 * decrypting their bonus buffers. These blocks may request to
-		 * be decrypted in-place. This is necessary because there may
-		 * be many dnodes pointing into this buffer and there is
-		 * currently no method to synchronize replacing the backing
-		 * b_data buffer and updating all of the pointers. If the need
-		 * arises for other types to be decrypted in-place, they must
-		 * add handling here as well.
-		 */
-		if (ARC_BUF_ENCRYPTED(buf) &&
-		    hdr->b_crypt_hdr.b_ot == DMU_OT_DNODE &&
-		    (flags & ARC_FILL_IN_PLACE)) {
-			ASSERT(!arc_buf_is_shared(buf));
-			ASSERT(!compressed);
-			ASSERT(!encrypted);
-			zio_crypt_copy_dnode_bonus(hdr->b_l1hdr.b_pdata,
-			    buf->b_data, arc_buf_size(buf));
-			buf->b_flags &= ~ARC_BUF_FLAG_ENCRYPTED;
-			buf->b_flags &= ~ARC_BUF_FLAG_COMPRESSED;
+	/*
+	 * There is a special case here for dnode blocks which are
+	 * decrypting their bonus buffers. These blocks may request to
+	 * be decrypted in-place. This is necessary because there may
+	 * be many dnodes pointing into this buffer and there is
+	 * currently no method to synchronize replacing the backing
+	 * b_data buffer and updating all of the pointers. Here we use
+	 * the hash lock to ensure there are no races. If the need
+	 * arises for other types to be decrypted in-place, they must
+	 * add handling here as well.
+	 */
+	if ((flags & ARC_FILL_IN_PLACE) != 0) {
+		ASSERT(!hdr_compressed);
+		ASSERT(!compressed);
+		ASSERT(!encrypted);
+		
+		if (HDR_ENCRYPT(hdr) && ARC_BUF_ENCRYPTED(buf)) {
+			ASSERT3U(hdr->b_crypt_hdr.b_ot, ==, DMU_OT_DNODE);
+			arc_buf_untransform_in_place(buf, hash_lock);
+		}
+		
+		/* Compute the hdr's checksum if necessary */
+		arc_cksum_compute(buf);
+		return (0);
+	}
 
-			if (hash_lock != NULL) {
-				mutex_enter(hash_lock);
-				hdr->b_crypt_hdr.b_ebufcnt -= 1;
-				mutex_exit(hash_lock);
-			} else {
-				hdr->b_crypt_hdr.b_ebufcnt -= 1;
-			}
-		} else if (!arc_buf_is_shared(buf)) {
+	if (hdr_compressed == compressed) {
+		if (!arc_buf_is_shared(buf)) {
 			bcopy(hdr->b_l1hdr.b_pdata, buf->b_data,
 			    arc_buf_size(buf));
 		}
@@ -2641,7 +2684,7 @@ arc_can_share(arc_buf_hdr_t *hdr, arc_buf_t *buf)
 	 * 4. the hdr isn't already being shared
 	 * 5. the buf is either compressed or it is the last buf in the hdr list
 	 *
-	 * Criterion #4 maintains the invariant that shared uncompressed
+	 * Criterion #5 maintains the invariant that shared uncompressed
 	 * bufs must be the final buf in the hdr's b_buf list. Reading this, you
 	 * might ask, "if a compressed buf is allocated first, won't that be the
 	 * last thing in the list?", but in that case it's impossible to create
@@ -3205,7 +3248,7 @@ arc_hdr_realloc(arc_buf_hdr_t *hdr, kmem_cache_t *old, kmem_cache_t *new)
 
 	/*
 	 * if the caller wanted a new full header and the header is to be
-	 * encrypted we will actually allocate the from the full crypt
+	 * encrypted we will actually allocate the header from the full crypt
 	 * cache instead. The same applies to freeing from the old cache.
 	 */
 	if (HDR_ENCRYPT(hdr) && new == hdr_full_cache)
@@ -5185,7 +5228,9 @@ top:
 	/*
 	 * Determine if we have an L1 cache hit or a cache miss. For simplicity
 	 * we maintain encrypted data seperately from compressed / uncompressed
-	 * data. If the user is requesting
+	 * data. If the user is requesting raw encrypted data and we don't have
+	 * that in the header we will read from disk to guarantee that we can
+	 * get it even if the encryption keys aren't loaded.
 	 */
 	if (hdr != NULL && HDR_HAS_L1HDR(hdr) &&
 	    (hdr->b_l1hdr.b_pdata != NULL || HDR_HAS_RDATA(hdr)) &&

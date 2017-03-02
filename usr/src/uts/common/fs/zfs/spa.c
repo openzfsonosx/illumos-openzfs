@@ -3592,7 +3592,7 @@ spa_l2cache_drop(spa_t *spa)
 
 /*
  * Verify encryption parameters for spa creation. If we have specified a crypt,
- * we must have a fully speicified key, with the encryption feature enabled.
+ * we must have a fully specified key, with the encryption feature enabled.
  * Otherwise, we should not have any specified encryption parameters.
  */
 static int

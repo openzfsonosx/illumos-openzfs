@@ -549,7 +549,7 @@ dsl_scan_zil(dsl_pool_t *dp, zil_header_t *zh)
 	zilog = zil_alloc(dp->dp_meta_objset, zh);
 
 	(void) zil_parse(zilog, dsl_scan_zil_block, dsl_scan_zil_record, &zsa,
-	    claim_txg, B_TRUE);
+	    claim_txg, B_FALSE);
 
 	zil_free(zilog);
 }
@@ -570,8 +570,11 @@ dsl_scan_prefetch(dsl_scan_t *scn, arc_buf_t *buf, blkptr_t *bp,
 	    (BP_GET_LEVEL(bp) == 0 && BP_GET_TYPE(bp) != DMU_OT_DNODE))
 		return;
 
-	if (BP_IS_ENCRYPTED(bp))
+	if (BP_IS_ENCRYPTED(bp)) {
+		ASSERT3U(BP_GET_TYPE(bp), ==, DMU_OT_DNODE);
+		ASSERT3U(BP_GET_LEVEL(bp), ==, 0);
 		zio_flags |= ZIO_FLAG_RAW;
+	}
 
 	SET_BOOKMARK(&czb, objset, object, BP_GET_LEVEL(bp), blkid);
 

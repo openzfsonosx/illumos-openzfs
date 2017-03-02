@@ -180,7 +180,7 @@ dsl_dir_hold_obj(dsl_pool_t *dp, uint64_t ddobj,
 		dd->dd_dbuf = dbuf;
 		dd->dd_pool = dp;
 
-		if (doi.doi_type == DMU_OTN_ZAP_METADATA &&
+		if (dsl_dir_is_zapified(dd) &&
 		    zap_contains(dp->dp_meta_objset, ddobj,
 		    DD_FIELD_CRYPTO_KEY_OBJ) == 0) {
 			VERIFY0(zap_lookup(dp->dp_meta_objset,
@@ -1791,21 +1791,14 @@ dsl_dir_rename_check(void *arg, dmu_tx_t *tx)
 				dsl_dir_rele(dd, FTAG);
 				return (err);
 			}
+		}
 
-			/*
-			 * encrypted datasets can only be moved if they are
-			 * an encryption root (locally set keyformat).
-			 */
-			if (dd->dd_crypto_obj != 0) {
-				err = zap_contains(os,
-				    dsl_dir_phys(dd)->dd_props_zapobj,
-				    zfs_prop_to_name(ZFS_PROP_KEYFORMAT));
-				if (err != 0) {
-					dsl_dir_rele(newparent, FTAG);
-					dsl_dir_rele(dd, FTAG);
-					return (SET_ERROR(EACCES));
-				}
-			}
+		/* check for encryption errors */
+		error = dsl_dir_rename_crypt_check(dd, newparent);
+		if (error != 0) {
+			dsl_dir_rele(newparent, FTAG);
+			dsl_dir_rele(dd, FTAG);
+			return (SET_ERROR(EACCES));
 		}
 
 		/* no rename into our descendant */

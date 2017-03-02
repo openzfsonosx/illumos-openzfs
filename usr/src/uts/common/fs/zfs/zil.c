@@ -277,10 +277,10 @@ zil_read_log_data(zilog_t *zilog, const lr_write_t *lr, void *wbuf)
 
 	/*
 	 * If we are not using the resulting data, we are just checking that
-	 * it hasn't been corrupted. We shouldn't try to decrypt it now since
-	 * the keys may not be loaded.
+	 * it hasn't been corrupted so we don't need to waste CPU time
+	 * decompressing and decrypting it.
 	 */
-	if (wbuf == NULL && BP_IS_ENCRYPTED(bp))
+	if (wbuf == NULL)
 		zio_flags |= ZIO_FLAG_RAW;
 
 	SET_BOOKMARK(&zb, dmu_objset_id(zilog->zl_os), lr->lr_foid,

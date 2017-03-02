@@ -1457,6 +1457,57 @@ spa_keystore_rewrap(const char *dsname, dsl_crypto_params_t *dcp)
 	    spa_keystore_rewrap_sync, &skra, 0, ZFS_SPACE_CHECK_NORMAL));
 }
 
+int
+dsl_dir_rename_crypt_check(dsl_dir_t *dd, dsl_dir_t *newparent)
+{
+	int ret;
+	dsl_dir_t *inherit_dd = NULL;
+	dsl_dir_t *pinherit_dd = NULL;
+
+	if (dd->dd_crypto_obj == 0) {
+		/* children of encrypted parents must be encrypted */
+		if (newparent->dd_crypto_obj != 0) {
+			ret = SET_ERROR(EACCES);
+			goto error;
+		}
+
+		return (0);
+	}
+
+	ret = dsl_dir_hold_keylocation_source_dd(dd, FTAG, &inherit_dd);
+	if (ret != 0)
+		goto error;
+
+	/*
+	 * if this is not an encryption root, we must make sure we are not
+	 * moving dd to a new encryption root
+	 */
+	if (dd->dd_object != inherit_dd->dd_object) {
+		ret = dsl_dir_hold_keylocation_source_dd(newparent, FTAG,
+		    &pinherit_dd);
+		if (ret != 0)
+			goto error;
+
+		if (pinherit_dd->dd_object != inherit_dd->dd_object) {
+			ret = SET_ERROR(EACCES);
+			goto error;
+		}
+	}
+
+	if (inherit_dd != NULL)
+		dsl_dir_rele(inherit_dd, FTAG);
+	if (pinherit_dd != NULL)
+		dsl_dir_rele(pinherit_dd, FTAG);
+	return (0);
+
+error:
+	if (inherit_dd != NULL)
+		dsl_dir_rele(inherit_dd, FTAG);
+	if (pinherit_dd != NULL)
+		dsl_dir_rele(pinherit_dd, FTAG);
+	return (ret);
+}
+
 /*
  * This is the combined check function for verifying encrypted create and
  * clone parameters. There are a lot of edge cases to handle here so it has
@@ -1808,7 +1859,7 @@ spa_do_crypt_data(boolean_t encrypt, spa_t *spa, zbookmark_phys_t *zb,
 	/* look up the key from the spa's keystore */
 	ret = spa_keystore_lookup_key(spa, zb->zb_objset, FTAG, &dck);
 	if (ret != 0)
-		goto error;
+		return (ret);
 
 	/*
 	 * Both encryption and decryption functions need a salt for key

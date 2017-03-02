@@ -2425,7 +2425,7 @@ zfs_prop_set_special(const char *dsname, zprop_source_t source,
 	const char *propname = nvpair_name(pair);
 	zfs_prop_t prop = zfs_name_to_prop(propname);
 	uint64_t intval;
-	char *strval;
+	char *strval = NULL;
 	int err = -1;
 
 	if (prop == ZPROP_INVAL) {
@@ -2446,9 +2446,9 @@ zfs_prop_set_special(const char *dsname, zprop_source_t source,
 		if (prop != ZFS_PROP_KEYLOCATION)
 			return (-1);
 
-		VERIFY(0 == nvpair_value_string(pair, &strval));
+		strval = fnvpair_value_string(pair);
 	} else {
-		VERIFY(0 == nvpair_value_uint64(pair, &intval));
+		intval = fnvpair_value_uint64(pair);
 	}
 
 	switch (prop) {
@@ -2475,6 +2475,11 @@ zfs_prop_set_special(const char *dsname, zprop_source_t source,
 		break;
 	case ZFS_PROP_KEYLOCATION:
 		err = dsl_crypto_can_set_keylocation(dsname, strval);
+
+		/*
+		 * Set err to -1 to force the zfs_set_prop_nvlist code down the
+		 * default path to set the value in the nvlist.
+		 */
 		if (err == 0)
 			err = -1;
 		break;
@@ -3204,6 +3209,7 @@ zfs_fill_zplprops_root(uint64_t spa_vers, nvlist_t *createprops,
  *     "type" -> dmu_objset_type_t (int32)
  *     (optional) "props" -> { prop -> value }
  *     (optional) "hidden_args" -> { "wkeydata" -> value }
+ *         raw uint8_t array of encryption wrapping key data (32 bytes)
  * }
  *
  * outnvl: propname -> error code (int32)
@@ -3320,6 +3326,7 @@ zfs_ioc_create(const char *fsname, nvlist_t *innvl, nvlist_t *outnvl)
  *     "origin" -> name of origin snapshot
  *     (optional) "props" -> { prop -> value }
  *     (optional) "hidden_args" -> { "wkeydata" -> value }
+ *         raw uint8_t array of encryption wrapping key data (32 bytes)
  * }
  *
  * outnvl: propname -> error code (int32)
@@ -5619,6 +5626,7 @@ out:
  * Load a user's wrapping key into the kernel.
  * innvl: {
  *     "hidden_args" -> { "wkeydata" -> value }
+ *         raw uint8_t array of encryption wrapping key data (32 bytes)
  *     (optional) "noop" -> (value ignored)
  *         presence indicated key should only be verified, not loaded
  * }
@@ -5633,7 +5641,7 @@ zfs_ioc_load_key(const char *dsname, nvlist_t *innvl, nvlist_t *outnvl)
 	boolean_t noop = nvlist_exists(innvl, "noop");
 
 	if (strchr(dsname, '@') != NULL || strchr(dsname, '%') != NULL) {
-		ret = (SET_ERROR(EINVAL));
+		ret = SET_ERROR(EINVAL);
 		goto error;
 	}
 
@@ -5668,20 +5676,18 @@ error:
 static int
 zfs_ioc_unload_key(const char *dsname, nvlist_t *innvl, nvlist_t *outnvl)
 {
-	int ret;
+	int ret = 0;
 
 	if (strchr(dsname, '@') != NULL || strchr(dsname, '%') != NULL) {
 		ret = (SET_ERROR(EINVAL));
-		goto error;
+		goto out;
 	}
 
 	ret = spa_keystore_unload_wkey(dsname);
 	if (ret != 0)
-		goto error;
+		goto out;
 
-	return (0);
-
-error:
+out:
 	return (ret);
 }
 
@@ -5692,6 +5698,7 @@ error:
  *
  * innvl: {
  *    "hidden_args" (optional) -> { "wkeydata" -> value }
+ *         raw uint8_t array of new encryption wrapping key data (32 bytes)
  *    "props" (optional) -> { prop -> value }
  * }
  *
