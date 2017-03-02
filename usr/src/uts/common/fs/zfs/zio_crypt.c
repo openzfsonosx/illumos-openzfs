@@ -326,13 +326,14 @@ zio_crypt_key_init(uint64_t crypt, zio_crypt_key_t *key)
 	if (ret != 0)
 		goto error;
 
-	ret = random_get_bytes(key->zk_salt, DATA_SALT_LEN);
+	ret = random_get_bytes(key->zk_salt, ZIO_DATA_SALT_LEN);
 	if (ret != 0)
 		goto error;
 
 	/* derive the current key from the master key */
 	ret = hkdf_sha256(key->zk_master_keydata, keydata_len, NULL, 0,
-	    key->zk_salt, DATA_SALT_LEN, key->zk_current_keydata, keydata_len);
+	    key->zk_salt, ZIO_DATA_SALT_LEN, key->zk_current_keydata,
+	    keydata_len);
 	if (ret != 0)
 		goto error;
 
@@ -376,12 +377,12 @@ static int
 zio_crypt_key_change_salt(zio_crypt_key_t *key)
 {
 	int ret;
-	uint8_t salt[DATA_SALT_LEN];
+	uint8_t salt[ZIO_DATA_SALT_LEN];
 	crypto_mechanism_t mech;
 	uint_t keydata_len = zio_crypt_table[key->zk_crypt].ci_keylen;
 
 	/* generate a new salt */
-	ret = random_get_bytes(salt, DATA_SALT_LEN);
+	ret = random_get_bytes(salt, ZIO_DATA_SALT_LEN);
 	if (ret != 0)
 		goto error;
 
@@ -389,12 +390,12 @@ zio_crypt_key_change_salt(zio_crypt_key_t *key)
 
 	/* derive the current key from the master key and the new salt */
 	ret = hkdf_sha256(key->zk_master_keydata, keydata_len, NULL, 0,
-	    salt, DATA_SALT_LEN, key->zk_current_keydata, keydata_len);
+	    salt, ZIO_DATA_SALT_LEN, key->zk_current_keydata, keydata_len);
 	if (ret != 0)
 		goto error_unlock;
 
 	/* assign the salt and reset the usage count */
-	bcopy(salt, key->zk_salt, DATA_SALT_LEN);
+	bcopy(salt, key->zk_salt, ZIO_DATA_SALT_LEN);
 	key->zk_salt_count = 0;
 
 	/* destroy the old context template and create the new one */
@@ -423,7 +424,7 @@ zio_crypt_key_get_salt(zio_crypt_key_t *key, uint8_t *salt)
 
 	rw_enter(&key->zk_salt_lock, RW_READER);
 
-	bcopy(key->zk_salt, salt, DATA_SALT_LEN);
+	bcopy(key->zk_salt, salt, ZIO_DATA_SALT_LEN);
 	salt_change = (atomic_inc_64_nv(&key->zk_salt_count) ==
 	    ZIO_CRYPT_MAX_SALT_USAGE);
 
@@ -471,7 +472,7 @@ zio_do_crypt_uio(boolean_t encrypt, uint64_t crypt, crypto_key_t *key,
 	/* the mac will always be the last iovec_t in the cipher uio */
 	maclen = cuio->uio_iov[cuio->uio_iovcnt - 1].iov_len;
 
-	ASSERT(maclen <= DATA_MAC_LEN);
+	ASSERT(maclen <= ZIO_DATA_MAC_LEN);
 
 	/* setup encryption mechanism (same as crypt) */
 	mech.cm_type = crypto_mech2id(crypt_info.ci_mechname);
@@ -488,7 +489,7 @@ zio_do_crypt_uio(boolean_t encrypt, uint64_t crypt, crypto_key_t *key,
 	 * are supported)
 	 */
 	if (crypt_info.ci_crypt_type == ZC_TYPE_CCM) {
-		ccmp.ulNonceSize = DATA_IV_LEN;
+		ccmp.ulNonceSize = ZIO_DATA_IV_LEN;
 		ccmp.ulAuthDataSize = 0;
 		ccmp.authData = NULL;
 		ccmp.ulMACSize = maclen;
@@ -498,8 +499,8 @@ zio_do_crypt_uio(boolean_t encrypt, uint64_t crypt, crypto_key_t *key,
 		mech.cm_param = (char *)(&ccmp);
 		mech.cm_param_len = sizeof (CK_AES_CCM_PARAMS);
 	} else {
-		gcmp.ulIvLen = DATA_IV_LEN;
-		gcmp.ulIvBits = BYTES_TO_BITS(DATA_IV_LEN);
+		gcmp.ulIvLen = ZIO_DATA_IV_LEN;
+		gcmp.ulIvBits = BYTES_TO_BITS(ZIO_DATA_IV_LEN);
 		gcmp.ulAADLen = 0;
 		gcmp.pAAD = NULL;
 		gcmp.ulTagBits = BYTES_TO_BITS(maclen);
@@ -641,13 +642,14 @@ zio_crypt_key_unwrap(crypto_key_t *cwkey, uint64_t crypt, uint8_t *keydata,
 		goto error;
 
 	/* generate a fresh salt */
-	ret = random_get_bytes(key->zk_salt, DATA_SALT_LEN);
+	ret = random_get_bytes(key->zk_salt, ZIO_DATA_SALT_LEN);
 	if (ret != 0)
 		goto error;
 
 	/* derive the current key from the master key */
 	ret = hkdf_sha256(key->zk_master_keydata, keydata_len, NULL, 0,
-	    key->zk_salt, DATA_SALT_LEN, key->zk_current_keydata, keydata_len);
+	    key->zk_salt, ZIO_DATA_SALT_LEN, key->zk_current_keydata,
+	    keydata_len);
 	if (ret != 0)
 		goto error;
 
@@ -693,14 +695,14 @@ zio_crypt_generate_iv(uint8_t *ivbuf)
 	int ret;
 
 	/* randomly generate the IV */
-	ret = random_get_pseudo_bytes(ivbuf, DATA_IV_LEN);
+	ret = random_get_pseudo_bytes(ivbuf, ZIO_DATA_IV_LEN);
 	if (ret != 0)
 		goto error;
 
 	return (0);
 
 error:
-	bzero(ivbuf, DATA_IV_LEN);
+	bzero(ivbuf, ZIO_DATA_IV_LEN);
 	return (ret);
 }
 
@@ -740,8 +742,8 @@ zio_crypt_generate_iv_salt_dedup(zio_crypt_key_t *key, uint8_t *data,
 	}
 
 	/* truncate and copy the digest into the output buffer */
-	bcopy(digestbuf, salt, DATA_SALT_LEN);
-	bcopy(digestbuf + DATA_SALT_LEN, ivbuf, DATA_IV_LEN);
+	bcopy(digestbuf, salt, ZIO_DATA_SALT_LEN);
+	bcopy(digestbuf + ZIO_DATA_SALT_LEN, ivbuf, ZIO_DATA_IV_LEN);
 
 	return (0);
 
@@ -1257,17 +1259,17 @@ zio_crypt_init_uios(boolean_t encrypt, dmu_object_type_t ot, uint8_t *plainbuf,
 	case DMU_OT_INTENT_LOG:
 		ret = zio_crypt_init_uios_zil(encrypt, plainbuf, cipherbuf,
 		    datalen, puio, cuio, enc_len);
-		maclen = ZIL_MAC_LEN;
+		maclen = ZIO_ZIL_MAC_LEN;
 		break;
 	case DMU_OT_DNODE:
 		ret = zio_crypt_init_uios_dnode(encrypt, plainbuf, cipherbuf,
 		    datalen, puio, cuio, enc_len);
-		maclen = DATA_MAC_LEN;
+		maclen = ZIO_DATA_MAC_LEN;
 		break;
 	default:
 		ret = zio_crypt_init_uios_normal(encrypt, plainbuf, cipherbuf,
 		    datalen, puio, cuio, enc_len);
-		maclen = DATA_MAC_LEN;
+		maclen = ZIO_DATA_MAC_LEN;
 		break;
 	}
 
@@ -1323,7 +1325,7 @@ zio_do_crypt_data(boolean_t encrypt, zio_crypt_key_t *key, uint8_t *salt,
 	rw_enter(&key->zk_salt_lock, RW_READER);
 	locked = B_TRUE;
 
-	if (bcmp(salt, key->zk_salt, DATA_SALT_LEN) == 0) {
+	if (bcmp(salt, key->zk_salt, ZIO_DATA_SALT_LEN) == 0) {
 		ckey = &key->zk_current_key;
 		tmpl = key->zk_current_tmpl;
 	} else {
@@ -1331,7 +1333,7 @@ zio_do_crypt_data(boolean_t encrypt, zio_crypt_key_t *key, uint8_t *salt,
 		locked = B_FALSE;
 
 		ret = hkdf_sha256(key->zk_master_keydata, keydata_len, NULL, 0,
-		    salt, DATA_SALT_LEN, enc_keydata, keydata_len);
+		    salt, ZIO_DATA_SALT_LEN, enc_keydata, keydata_len);
 		if (ret != 0)
 			goto error;
 

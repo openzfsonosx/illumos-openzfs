@@ -104,7 +104,7 @@ typedef enum arc_flags
 	ARC_FLAG_L2_EVICTED		= 1 << 12,	/* evicted during I/O */
 	ARC_FLAG_L2_WRITE_HEAD		= 1 << 13,	/* head of write list */
 	/* encrypted on disk (may or may not be encrypted in memory) */
-	ARC_FLAG_ENCRYPT		= 1 << 14,
+	ARC_FLAG_ENCRYPTED		= 1 << 14,
 	/* indicates that the buffer contains metadata (otherwise, data) */
 	ARC_FLAG_BUFC_METADATA		= 1 << 15,
 

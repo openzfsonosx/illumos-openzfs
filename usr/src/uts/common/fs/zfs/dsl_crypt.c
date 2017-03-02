@@ -1898,10 +1898,10 @@ spa_do_crypt_data(boolean_t encrypt, spa_t *spa, zbookmark_phys_t *zb,
 error:
 	/* zero out any state we might have changed while encrypting */
 	if (encrypt) {
-		bzero(salt, DATA_SALT_LEN);
-		bzero(iv, DATA_IV_LEN);
+		bzero(salt, ZIO_DATA_SALT_LEN);
+		bzero(iv, ZIO_DATA_IV_LEN);
 		bzero(mac, (ot == DMU_OT_INTENT_LOG) ?
-		    ZIL_MAC_LEN : DATA_MAC_LEN);
+		    ZIO_ZIL_MAC_LEN : ZIO_DATA_MAC_LEN);
 	}
 
 	if (dck != NULL)

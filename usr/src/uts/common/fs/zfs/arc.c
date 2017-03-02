@@ -253,7 +253,7 @@
  *
  * The L1ARC has a slightly different system for storing encrypted data.
  * Raw (encrypted + possibly compressed) data has a few subtle differences from
- * data that is just compressed. The biggest difference is that it is not always
+ * data that is just compressed. The biggest difference is that it is not
  * possible to decrypt encrypted data (or visa versa) if the keys aren't loaded.
  * The other difference is that encryption cannot be treated as a suggestion.
  * If a caller would prefer compressed data, but they actually wind up with
@@ -811,7 +811,7 @@ static arc_state_t	*arc_l2c_only;
 #define	arc_meta_used	ARCSTAT(arcstat_meta_used) /* size of metadata */
 #define	arc_meta_max	ARCSTAT(arcstat_meta_max) /* max size of metadata */
 
-/* encrypted + compressed size of entire arc */
+/* size of all b_rabd's in entire arc */
 #define	arc_raw_size	ARCSTAT(arcstat_raw_size)
 /* compressed size of entire arc */
 #define	arc_compressed_size	ARCSTAT(arcstat_compressed_size)
@@ -915,7 +915,7 @@ typedef struct l1arc_buf_hdr {
  * disk as they appear in the main pool. In order for this to work we
  * need to pass around the encryption parameters so they can be used
  * to write data to the L2ARC. This struct is only defined in the
- * arc_buf_hdr_t if the L1 header is defined and has the ARC_FLAG_ENCRYPT
+ * arc_buf_hdr_t if the L1 header is defined and has the ARC_FLAG_ENCRYPTED
  * flag set.
  */
 typedef struct arc_buf_hdr_crypt {
@@ -923,9 +923,17 @@ typedef struct arc_buf_hdr_crypt {
 	dmu_object_type_t	b_ot;		/* object type */
 	uint32_t		b_ebufcnt;	/* number or encryped buffers */
 	uint64_t		b_dsobj;	/* for looking up key */
-	uint8_t			b_salt[DATA_SALT_LEN];
-	uint8_t			b_iv[DATA_IV_LEN];
-	uint8_t			b_mac[DATA_MAC_LEN];
+	uint8_t                 b_salt[ZIO_DATA_SALT_LEN];
+	uint8_t                 b_iv[ZIO_DATA_IV_LEN];
+
+	/*
+	 * Technically this could be removed since we will always be able to
+	 * get the mac from the bp when we need it. However, it is inconvenient
+	 * for callers of arc code to have to pass a bp in all the time. This
+	 * also allows us to assert that L2ARC data is properly encrypted to
+	 * match the data in the main storage pool.
+	 */
+	uint8_t                 b_mac[ZIO_DATA_MAC_LEN];
 } arc_buf_hdr_crypt_t;
 
 typedef struct l2arc_dev l2arc_dev_t;
@@ -979,7 +987,7 @@ struct arc_buf_hdr {
 	/* L1ARC fields. Undefined when in l2arc_only state */
 	l1arc_buf_hdr_t		b_l1hdr;
 	/*
-	 * Encryption parameters. Defined only when ARC_FLAG_ENCRYPT
+	 * Encryption parameters. Defined only when ARC_FLAG_ENCRYPTED
 	 * is set and the L1 header exists.
 	 */
 	arc_buf_hdr_crypt_t b_crypt_hdr;
@@ -1003,7 +1011,7 @@ struct arc_buf_hdr {
 #define	HDR_L2_WRITING(hdr)	((hdr)->b_flags & ARC_FLAG_L2_WRITING)
 #define	HDR_L2_EVICTED(hdr)	((hdr)->b_flags & ARC_FLAG_L2_EVICTED)
 #define	HDR_L2_WRITE_HEAD(hdr)	((hdr)->b_flags & ARC_FLAG_L2_WRITE_HEAD)
-#define	HDR_ENCRYPT(hdr)	((hdr)->b_flags & ARC_FLAG_ENCRYPT)
+#define	HDR_ENCRYPTED(hdr)	((hdr)->b_flags & ARC_FLAG_ENCRYPTED)
 #define	HDR_SHARED_DATA(hdr)	((hdr)->b_flags & ARC_FLAG_SHARED_DATA)
 
 #define	HDR_ISTYPE_METADATA(hdr)	\
@@ -1013,7 +1021,7 @@ struct arc_buf_hdr {
 #define	HDR_HAS_L1HDR(hdr)	((hdr)->b_flags & ARC_FLAG_HAS_L1HDR)
 #define	HDR_HAS_L2HDR(hdr)	((hdr)->b_flags & ARC_FLAG_HAS_L2HDR)
 #define	HDR_HAS_RDATA(hdr)	\
-	(HDR_HAS_L1HDR(hdr) && HDR_ENCRYPT(hdr) &&	\
+	(HDR_HAS_L1HDR(hdr) && HDR_ENCRYPTED(hdr) &&	\
 	(hdr)->b_crypt_hdr.b_rdata != NULL)
 
 /* For storing compression mode in b_flags */
@@ -1353,8 +1361,8 @@ hdr_full_crypt_cons(void *vbuf, void *unused, int kmflag)
 	arc_buf_hdr_t *hdr = vbuf;
 
 	(void) hdr_full_cons(vbuf, unused, kmflag);
-	bzero(&hdr->b_crypt_hdr, HDR_FULL_CRYPT_SIZE - HDR_FULL_SIZE);
-	arc_space_consume(HDR_FULL_CRYPT_SIZE - HDR_FULL_SIZE, ARC_SPACE_HDRS);
+	bzero(&hdr->b_crypt_hdr, sizeof (hdr->b_crypt_hdr));
+	arc_space_consume(sizeof (hdr->b_crypt_hdr), ARC_SPACE_HDRS);
 
 	return (0);
 }
@@ -1406,8 +1414,10 @@ hdr_full_dest(void *vbuf, void *unused)
 static void
 hdr_full_crypt_dest(void *vbuf, void *unused)
 {
+	arc_buf_hdr_t *hdr = vbuf;
+
 	hdr_full_dest(vbuf, unused);
-	arc_space_return(HDR_FULL_CRYPT_SIZE - HDR_FULL_SIZE, ARC_SPACE_HDRS);
+	arc_space_return(sizeof (hdr->b_crypt_hdr), ARC_SPACE_HDRS);
 }
 
 /* ARGSUSED */
@@ -1511,10 +1521,8 @@ arc_buf_lsize(arc_buf_t *buf)
 }
 
 /*
- * This funciton will return B_TRUE if the buffer is encrypted in memory.
- * The plaindata will not be readable until the key is loaded and it is
- * decrypted by either calling arc_untransform() or by reading it again
- * without ZIO_FLAG_RAW.
+ * This function will return B_TRUE if the buffer is encrypted in memory.
+ * This buffer can be decrypted by calling arc_untransform().
  */
 boolean_t
 arc_is_encrypted(arc_buf_t *buf)
@@ -1977,8 +1985,8 @@ arc_hdr_size(arc_buf_hdr_t *hdr)
 /*
  * This function will take a header that only has raw encrypted data in
  * b_crypt_hdr.b_rdata and decrypts it into a new buffer which is stored in
- * b_l1hdr.b_pdata. If designated on the header, this function will also
- * decompress the data as well.
+ * b_l1hdr.b_pabd. If designated in the header, this function will also
+ * decompress the data.
  */
 static int
 arc_hdr_decrypt(arc_buf_hdr_t *hdr, kmutex_t *hash_lock, spa_t *spa)
@@ -2022,6 +2030,11 @@ arc_hdr_decrypt(arc_buf_hdr_t *hdr, kmutex_t *hash_lock, spa_t *spa)
 		goto error;
 	}
 
+	/*
+	 * If this header has disabled arc compression but the b_pabd is
+	 * compressed after decrypting it, we need to decompress the newly
+	 * decrypted data.
+	 */
 	if (HDR_GET_COMPRESS(hdr) != ZIO_COMPRESS_OFF &&
 	    !HDR_COMPRESSION_ENABLED(hdr)) {
 		cbuf = arc_get_data_buf(hdr, arc_hdr_size(hdr), hdr);
@@ -2118,7 +2131,7 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, arc_fill_flags_t flags)
 	ASSERT3P(buf->b_data, !=, NULL);
 	IMPLY(compressed, hdr_compressed || ARC_BUF_ENCRYPTED(buf));
 	IMPLY(compressed, ARC_BUF_COMPRESSED(buf));
-	IMPLY(encrypted, HDR_ENCRYPT(hdr));
+	IMPLY(encrypted, HDR_ENCRYPTED(hdr));
 	IMPLY(encrypted, ARC_BUF_ENCRYPTED(buf));
 	IMPLY(encrypted, ARC_BUF_COMPRESSED(buf));
 	IMPLY(encrypted, !ARC_BUF_SHARED(buf));
@@ -2155,7 +2168,7 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, arc_fill_flags_t flags)
 		ASSERT(!compressed);
 		ASSERT(!encrypted);
 		
-		if (HDR_ENCRYPT(hdr) && ARC_BUF_ENCRYPTED(buf)) {
+		if (HDR_ENCRYPTED(hdr) && ARC_BUF_ENCRYPTED(buf)) {
 			ASSERT3U(hdr->b_crypt_hdr.b_ot, ==, DMU_OT_DNODE);
 			arc_buf_untransform_in_place(buf, hash_lock);
 		}
@@ -2250,6 +2263,11 @@ byteswap:
 	return (0);
 }
 
+/*
+ * If this function is being called to decrypt an encrypted buffer, the key
+ * must be loaded and a mapping must be made available in the keystore via
+ * spa_keystore_create_mapping() or one of its callers.
+ */
 int
 arc_untransform(arc_buf_t *buf, spa_t *spa, boolean_t in_place)
 {
@@ -2748,7 +2766,7 @@ arc_buf_alloc_impl(arc_buf_hdr_t *hdr, spa_t *spa, void *tag,
 	 * compressed. This must be overriden if the buffer is encrypted since
 	 * encrypted buffers cannot be decompressed.
 	 */
-	if (encrypted && HDR_ENCRYPT(hdr)) {
+	if (encrypted && HDR_ENCRYPTED(hdr)) {
 		buf->b_flags |= ARC_BUF_FLAG_COMPRESSED;
 		buf->b_flags |= ARC_BUF_FLAG_ENCRYPTED;
 		flags |= ARC_FILL_COMPRESSED | ARC_FILL_ENCRYPTED;
@@ -3109,7 +3127,7 @@ arc_buf_destroy_impl(arc_buf_t *buf)
 		    arc_hdr_get_compress(hdr) != ZIO_COMPRESS_OFF);
 	}
 
-	if (HDR_ENCRYPT(hdr))
+	if (HDR_ENCRYPTED(hdr))
 		ebufcnt = hdr->b_crypt_hdr.b_ebufcnt;
 
 	if (hdr->b_l1hdr.b_bufcnt - ebufcnt == 0)
@@ -3128,7 +3146,7 @@ arc_hdr_alloc_data(arc_buf_hdr_t *hdr, boolean_t alloc_rdata)
 	ASSERT3U(HDR_GET_LSIZE(hdr), >, 0);
 	ASSERT(HDR_HAS_L1HDR(hdr));
 	ASSERT(!HDR_SHARED_DATA(hdr) || alloc_rdata);
-	IMPLY(alloc_rdata, HDR_ENCRYPT(hdr));
+	IMPLY(alloc_rdata, HDR_ENCRYPTED(hdr));
 
 	if (hdr->b_l1hdr.b_pdata == NULL && !HDR_HAS_RDATA(hdr))
 		hdr->b_l1hdr.b_byteswap = DMU_BSWAP_NUMFUNCS;
@@ -3210,7 +3228,7 @@ arc_hdr_alloc(uint64_t spa, int32_t psize, int32_t lsize,
 	arc_hdr_set_flags(hdr, arc_bufc_to_flags(type) | ARC_FLAG_HAS_L1HDR);
 	arc_hdr_set_compress(hdr, compression_type);
 	if (encrypted)
-		arc_hdr_set_flags(hdr, ARC_FLAG_ENCRYPT);
+		arc_hdr_set_flags(hdr, ARC_FLAG_ENCRYPTED);
 
 	hdr->b_l1hdr.b_state = arc_anon;
 	hdr->b_l1hdr.b_arc_access = 0;
@@ -3251,9 +3269,9 @@ arc_hdr_realloc(arc_buf_hdr_t *hdr, kmem_cache_t *old, kmem_cache_t *new)
 	 * encrypted we will actually allocate the header from the full crypt
 	 * cache instead. The same applies to freeing from the old cache.
 	 */
-	if (HDR_ENCRYPT(hdr) && new == hdr_full_cache)
+	if (HDR_ENCRYPTED(hdr) && new == hdr_full_cache)
 		new = hdr_full_crypt_cache;
-	if (HDR_ENCRYPT(hdr) && old == hdr_full_cache)
+	if (HDR_ENCRYPTED(hdr) && old == hdr_full_cache)
 		old = hdr_full_crypt_cache;
 
 	nhdr = kmem_cache_alloc(new, KM_PUSHPAGE);
@@ -3359,7 +3377,7 @@ arc_hdr_realloc_crypt(arc_buf_hdr_t *hdr, boolean_t encrypt)
 	kmem_cache_t *ncache, *ocache;
 
 	ASSERT(HDR_HAS_L1HDR(hdr));
-	ASSERT3U(!!HDR_ENCRYPT(hdr), !=, encrypt);
+	ASSERT3U(!!HDR_ENCRYPTED(hdr), !=, encrypt);
 	ASSERT3P(hdr->b_l1hdr.b_state, ==, arc_anon);
 	ASSERT(!multilist_link_active(&hdr->b_l1hdr.b_arc_node));
 
@@ -3403,9 +3421,9 @@ arc_hdr_realloc_crypt(arc_buf_hdr_t *hdr, boolean_t encrypt)
 	(void) refcount_remove(&nhdr->b_l1hdr.b_refcnt, FTAG);
 
 	if (encrypt) {
-		arc_hdr_set_flags(nhdr, ARC_FLAG_ENCRYPT);
+		arc_hdr_set_flags(nhdr, ARC_FLAG_ENCRYPTED);
 	} else {
-		arc_hdr_clear_flags(nhdr, ARC_FLAG_ENCRYPT);
+		arc_hdr_clear_flags(nhdr, ARC_FLAG_ENCRYPTED);
 	}
 	buf_discard_identity(hdr);
 	kmem_cache_free(ocache, hdr);
@@ -3544,7 +3562,7 @@ arc_hdr_destroy(arc_buf_hdr_t *hdr)
 		ASSERT(!multilist_link_active(&hdr->b_l1hdr.b_arc_node));
 		ASSERT3P(hdr->b_l1hdr.b_acb, ==, NULL);
 
-		if (!HDR_ENCRYPT(hdr)) {
+		if (!HDR_ENCRYPTED(hdr)) {
 			kmem_cache_free(hdr_full_cache, hdr);
 		} else {
 			kmem_cache_free(hdr_full_crypt_cache, hdr);
@@ -5003,7 +5021,7 @@ arc_hdr_verify(arc_buf_hdr_t *hdr, blkptr_t *bp)
 		}
 		ASSERT3U(HDR_GET_LSIZE(hdr), ==, BP_GET_LSIZE(bp));
 		ASSERT3U(HDR_GET_PSIZE(hdr), ==, BP_GET_PSIZE(bp));
-		ASSERT3U(!!HDR_ENCRYPT(hdr), ==, BP_IS_ENCRYPTED(bp));
+		ASSERT3U(!!HDR_ENCRYPTED(hdr), ==, BP_IS_ENCRYPTED(bp));
 	}
 }
 
@@ -5716,7 +5734,7 @@ arc_release(arc_buf_t *buf, void *tag)
 		uint64_t spa = hdr->b_spa;
 		uint64_t psize = HDR_GET_PSIZE(hdr);
 		uint64_t lsize = HDR_GET_LSIZE(hdr);
-		boolean_t encrypted = HDR_ENCRYPT(hdr);
+		boolean_t encrypted = HDR_ENCRYPTED(hdr);
 		enum zio_compress compress = arc_hdr_get_compress(hdr);
 		arc_buf_contents_t type = arc_buf_type(hdr);
 		VERIFY3U(hdr->b_type, ==, type);
@@ -5903,10 +5921,10 @@ arc_write_ready(zio_t *zio)
 	arc_cksum_compute(buf);
 	arc_hdr_set_flags(hdr, ARC_FLAG_IO_IN_PROGRESS);
 
-	if (BP_IS_ENCRYPTED(zio->io_bp) != !!HDR_ENCRYPT(hdr))
+	if (BP_IS_ENCRYPTED(zio->io_bp) != !!HDR_ENCRYPTED(hdr))
 		hdr = arc_hdr_realloc_crypt(hdr, BP_IS_ENCRYPTED(zio->io_bp));
 
-	if (HDR_ENCRYPT(hdr)) {
+	if (HDR_ENCRYPTED(hdr)) {
 		/* ZIL blocks are written through zio_rewrite */
 		ASSERT3U(BP_GET_TYPE(zio->io_bp), !=, DMU_OT_INTENT_LOG);
 
@@ -5945,7 +5963,7 @@ arc_write_ready(zio_t *zio)
 		ASSERT3U(BP_GET_COMPRESS(zio->io_bp), !=, ZIO_COMPRESS_OFF);
 		ASSERT3U(psize, >, 0);
 
-		if (!HDR_ENCRYPT(hdr)) {
+		if (!HDR_ENCRYPTED(hdr)) {
 			arc_hdr_alloc_data(hdr, B_FALSE);
 			bcopy(zio->io_data, hdr->b_l1hdr.b_pdata, psize);
 		} else {
@@ -7074,12 +7092,12 @@ l2arc_read_done(zio_t *zio)
 	needs_tfm = (valid_cksum && !using_rdata);
 
 	/* Decrypt the data if it was encrypted in the L2ARC */
-	if (needs_tfm && HDR_ENCRYPT(hdr)) {
+	if (needs_tfm && HDR_ENCRYPTED(hdr)) {
 		dsl_crypto_key_t *dck;
 		blkptr_t *bp = zio->io_bp;
-		uint8_t salt[DATA_SALT_LEN];
-		uint8_t iv[DATA_IV_LEN];
-		uint8_t mac[DATA_MAC_LEN];
+		uint8_t salt[ZIO_DATA_SALT_LEN];
+		uint8_t iv[ZIO_DATA_IV_LEN];
+		uint8_t mac[ZIO_DATA_MAC_LEN];
 		void *ebuf = arc_get_data_buf(hdr, arc_hdr_size(hdr), hdr);
 
 		/* ZIL data is never be written to the L2 ARC */
@@ -7344,10 +7362,11 @@ l2arc_apply_transforms(spa_t *spa, arc_buf_hdr_t *hdr, void **buf_out,
 	uint64_t bsize = arc_hdr_size(hdr);
 	uint64_t csize = bsize;
 	dsl_crypto_key_t *dck = NULL;
+	uint8_t mac[ZIO_DATA_MAC_LEN] = { 0 };
 
 	ASSERT((HDR_GET_COMPRESS(hdr) != ZIO_COMPRESS_OFF &&
 	    !HDR_COMPRESSION_ENABLED(hdr)) ||
-	    HDR_ENCRYPT(hdr) ||
+	    HDR_ENCRYPTED(hdr) ||
 	    HDR_SHARED_DATA(hdr));
 
 	/*
@@ -7357,7 +7376,7 @@ l2arc_apply_transforms(spa_t *spa, arc_buf_hdr_t *hdr, void **buf_out,
 	 */
 	if (!(compress != ZIO_COMPRESS_OFF &&
 	    !HDR_COMPRESSION_ENABLED(hdr)) &&
-	    !HDR_ENCRYPT(hdr)) {
+	    !HDR_ENCRYPTED(hdr)) {
 		to_write = arc_alloc_zio_buf(type, bsize);
 		bcopy(hdr->b_l1hdr.b_pdata, to_write, bsize);
 		goto out;
@@ -7376,7 +7395,7 @@ l2arc_apply_transforms(spa_t *spa, arc_buf_hdr_t *hdr, void **buf_out,
 		to_write = cbuf;
 	}
 
-	if (HDR_ENCRYPT(hdr)) {
+	if (HDR_ENCRYPTED(hdr)) {
 		ebuf = arc_alloc_zio_buf(type, csize);
 
 		/*
@@ -7392,11 +7411,12 @@ l2arc_apply_transforms(spa_t *spa, arc_buf_hdr_t *hdr, void **buf_out,
 
 		ret = zio_do_crypt_data(B_TRUE, &dck->dck_key,
 		    hdr->b_crypt_hdr.b_salt, hdr->b_crypt_hdr.b_ot,
-		    hdr->b_crypt_hdr.b_iv, hdr->b_crypt_hdr.b_mac,
-		    csize, to_write, ebuf);
+			hdr->b_crypt_hdr.b_iv, mac, csize, to_write, ebuf);
 		if (ret != 0)
 			goto error;
 
+		/* assert that the MAC we got here matches the one we saved */
+		ASSERT0(bcmp(mac, hdr->b_crypt_hdr.b_mac, ZIO_DATA_MAC_LEN));
 		spa_keystore_dsl_key_rele(spa, dck, FTAG);
 
 		if (to_write == cbuf)
@@ -7549,7 +7569,7 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
 				to_write = hdr->b_crypt_hdr.b_rdata;
 			} else if (!(!HDR_COMPRESSION_ENABLED(hdr) &&
 			    HDR_GET_COMPRESS(hdr) != ZIO_COMPRESS_OFF) &&
-			    !HDR_ENCRYPT(hdr) &&
+			    !HDR_ENCRYPTED(hdr) &&
 			    !HDR_SHARED_DATA(hdr)) {
 				bsize = arc_hdr_size(hdr);
 				csize = bsize;

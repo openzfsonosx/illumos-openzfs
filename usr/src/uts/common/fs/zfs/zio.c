@@ -339,9 +339,9 @@ zio_decrypt(zio_t *zio, void *data, uint64_t size)
 {
 	int ret;
 	blkptr_t *bp = zio->io_bp;
-	uint8_t salt[DATA_SALT_LEN];
-	uint8_t iv[DATA_IV_LEN];
-	uint8_t mac[DATA_MAC_LEN];
+	uint8_t salt[ZIO_DATA_SALT_LEN];
+	uint8_t iv[ZIO_DATA_IV_LEN];
+	uint8_t mac[ZIO_DATA_MAC_LEN];
 
 	ASSERT(BP_IS_ENCRYPTED(bp));
 	ASSERT3U(size, !=, 0);
@@ -2223,9 +2223,9 @@ zio_write_gang_block(zio_t *pio)
 		zp.zp_dedup = B_FALSE;
 		zp.zp_dedup_verify = B_FALSE;
 		zp.zp_nopwrite = B_FALSE;
-		bzero(zp.zp_salt, DATA_SALT_LEN);
-		bzero(zp.zp_iv, DATA_IV_LEN);
-		bzero(zp.zp_mac, DATA_MAC_LEN);
+		bzero(zp.zp_salt, ZIO_DATA_SALT_LEN);
+		bzero(zp.zp_iv, ZIO_DATA_IV_LEN);
+		bzero(zp.zp_mac, ZIO_DATA_MAC_LEN);
 
 		zio_t *cio = zio_write(zio, spa, txg, &gbh->zg_blkptr[g],
 		    (char *)pio->io_data + (pio->io_size - resid), lsize, lsize,
@@ -2953,8 +2953,8 @@ zio_alloc_zil(spa_t *spa, objset_t *os, uint64_t txg, blkptr_t *new_bp,
 		 * rewrite time.
 		 */
 		if (os->os_encrypted) {
-			uint8_t iv[DATA_IV_LEN];
-			uint8_t salt[DATA_SALT_LEN];
+			uint8_t iv[ZIO_DATA_IV_LEN];
+			uint8_t salt[ZIO_DATA_SALT_LEN];
 
 			BP_SET_ENCRYPTED(new_bp, B_TRUE);
 			VERIFY0(spa_crypt_get_salt(spa,

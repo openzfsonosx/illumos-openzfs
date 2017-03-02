@@ -1965,9 +1965,9 @@ dmu_write_policy(objset_t *os, dnode_t *dn, int level, int wp, zio_prop_t *zp)
 	zp->zp_dedup_verify = dedup && dedup_verify;
 	zp->zp_nopwrite = nopwrite;
 	zp->zp_encrypt = encrypt;
-	bzero(zp->zp_salt, DATA_SALT_LEN);
-	bzero(zp->zp_iv, DATA_IV_LEN);
-	bzero(zp->zp_mac, DATA_MAC_LEN);
+	bzero(zp->zp_salt, ZIO_DATA_SALT_LEN);
+	bzero(zp->zp_iv, ZIO_DATA_IV_LEN);
+	bzero(zp->zp_mac, ZIO_DATA_MAC_LEN);
 
 	ASSERT(!(zp->zp_encrypt && zp->zp_copies >= 3));
 }
@@ -2001,9 +2001,9 @@ dmu_write_policy_override_encrypt(zio_prop_t *zp, enum zio_compress compress,
 	zp->zp_compress = compress;
 	zp->zp_nopwrite = B_FALSE;
 	zp->zp_encrypt = B_TRUE;
-	bcopy(salt, zp->zp_salt, DATA_SALT_LEN);
-	bcopy(iv, zp->zp_iv, DATA_IV_LEN);
-	bcopy(mac, zp->zp_mac, DATA_MAC_LEN);
+	bcopy(salt, zp->zp_salt, ZIO_DATA_SALT_LEN);
+	bcopy(iv, zp->zp_iv, ZIO_DATA_IV_LEN);
+	bcopy(mac, zp->zp_mac, ZIO_DATA_MAC_LEN);
 
 	if (zp->zp_copies >= SPA_DVAS_PER_BP)
 		zp->zp_copies = SPA_DVAS_PER_BP - 1;

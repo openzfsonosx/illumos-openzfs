@@ -35,7 +35,7 @@ extern "C" {
 struct zbookmark_phys;
 
 #define	WRAPPING_KEY_LEN 32
-#define	WRAPPING_IV_LEN DATA_IV_LEN
+#define	WRAPPING_IV_LEN ZIO_DATA_IV_LEN
 #define	WRAPPING_MAC_LEN 16
 
 #define	SHA_256_DIGEST_LEN 32
@@ -117,7 +117,7 @@ typedef struct zio_crypt_key {
 	uint8_t zk_current_keydata[MAX_MASTER_KEY_LEN];
 
 	/* current 64 bit salt for deriving an encryption key */
-	uint8_t zk_salt[DATA_SALT_LEN];
+	uint8_t zk_salt[ZIO_DATA_SALT_LEN];
 
 	/* count of how many times the current salt has been used */
 	uint64_t zk_salt_count;
