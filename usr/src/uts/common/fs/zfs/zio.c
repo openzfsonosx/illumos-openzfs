@@ -361,7 +361,7 @@ zio_decrypt(zio_t *zio, void *data, uint64_t size)
 	    bp->blk_birth, size, data, zio->io_data, iv, mac, salt);
 	if (ret == ZIO_NO_ENCRYPTION_NEEDED) {
 		ASSERT3U(BP_GET_TYPE(bp), ==, DMU_OT_INTENT_LOG);
-		abd_copy(data, zio->io_abd, size);
+//		abd_copy(data, zio->io_abd, size);
 	} else if (ret != 0) {
 		/* assert that the key was found unless this was speculative */
 		ASSERT(ret != ENOENT || (zio->io_flags & ZIO_FLAG_SPECULATIVE));
@@ -3311,9 +3311,9 @@ zio_encrypt(zio_t *zio)
 	uint64_t psize = BP_GET_PSIZE(bp);
 	dmu_object_type_t ot = BP_GET_TYPE(bp);
 	void *enc_buf = NULL;
-	uint8_t salt[DATA_SALT_LEN];
-	uint8_t iv[DATA_IV_LEN];
-	uint8_t mac[DATA_MAC_LEN];
+	uint8_t salt[ZIO_DATA_SALT_LEN];
+	uint8_t iv[ZIO_DATA_IV_LEN];
+	uint8_t mac[ZIO_DATA_MAC_LEN];
 
 	/* the root zio already encrypted the data */
 	if (zio->io_child_type == ZIO_CHILD_GANG)

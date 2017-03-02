@@ -719,7 +719,7 @@ dsl_dataset_rele_flags(dsl_dataset_t *ds, ds_hold_flags_t flags, void *tag)
 	if (ds->ds_dir != NULL && ds->ds_dir->dd_crypto_obj != 0 &&
 	    (flags & DS_HOLD_FLAG_DECRYPT)) {
 		(void) spa_keystore_remove_mapping(ds->ds_dir->dd_pool->dp_spa,
-			ds->ds_object, ds);
+		    ds->ds_object, ds);
 	}
 	dmu_buf_rele(ds->ds_dbuf, tag);
 }
@@ -1906,7 +1906,7 @@ dsl_dataset_stats(dsl_dataset_t *ds, nvlist_t *nv)
 	dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_DEFER_DESTROY,
 	    DS_IS_DEFER_DESTROY(ds) ? 1 : 0);
 	dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_KEYSTATUS,
-		dsl_dataset_get_keystatus(ds));
+	    dsl_dataset_get_keystatus(ds));
 
 	err = dsl_dir_get_crypt(ds->ds_dir, &crypt);
 	if (err == 0)

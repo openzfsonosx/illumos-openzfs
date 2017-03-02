@@ -171,7 +171,7 @@ dsl_crypto_params_create_nvlist(nvlist_t *props, nvlist_t *crypto_args,
 			do_inherit = B_FALSE;
 
 		ret = nvlist_lookup_string(props,
-			zfs_prop_to_name(ZFS_PROP_KEYLOCATION), &keylocation);
+		    zfs_prop_to_name(ZFS_PROP_KEYLOCATION), &keylocation);
 		if (ret == 0)
 			do_inherit = B_FALSE;
 
@@ -181,7 +181,8 @@ dsl_crypto_params_create_nvlist(nvlist_t *props, nvlist_t *crypto_args,
 			do_inherit = B_FALSE;
 
 		ret = nvlist_lookup_uint64(props,
-			zfs_prop_to_name(ZFS_PROP_PBKDF2_ITERS), &dcp->cp_iters);
+		    zfs_prop_to_name(ZFS_PROP_PBKDF2_ITERS),
+		    &dcp->cp_iters);
 		if (ret == 0)
 			do_inherit = B_FALSE;
 	}
@@ -241,7 +242,7 @@ dsl_crypto_params_create_nvlist(nvlist_t *props, nvlist_t *crypto_args,
 	/* if the user asked for the deault crypt, determine that now */
 	if (dcp->cp_crypt == ZIO_CRYPT_ON)
 		dcp->cp_crypt = ZIO_CRYPT_ON_VALUE;
-		
+
 	/* create the wrapping key from the raw data */
 	if (wkeydata != NULL) {
 		/* create the wrapping key with the verified parameters */
@@ -1382,8 +1383,8 @@ spa_keystore_rewrap_sync(void *arg, dmu_tx_t *tx)
 		}
 
 		dsl_prop_set_sync_impl(ds,
-			zfs_prop_to_name(ZFS_PROP_PBKDF2_ITERS), ZPROP_SRC_LOCAL,
-			8, 1, &skra->skra_cp->cp_iters, tx);
+		    zfs_prop_to_name(ZFS_PROP_PBKDF2_ITERS), ZPROP_SRC_LOCAL,
+		    8, 1, &skra->skra_cp->cp_iters, tx);
 
 		dsl_prop_set_sync_impl(ds,
 		    zfs_prop_to_name(ZFS_PROP_PBKDF2_SALT), ZPROP_SRC_LOCAL,
@@ -1514,7 +1515,7 @@ error:
  * been commented rather extensively. Some checks are duplicated in an effort
  * to ensure the error codes returned are consistent (EINVAL before EACCES).
  */
- int
+int
 dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_dir_t *origindd,
     dsl_crypto_params_t *dcp)
 {
@@ -1578,7 +1579,7 @@ dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_dir_t *origindd,
 		    dcp->cp_keyformat != ZFS_KEYFORMAT_NONE ||
 		    dcp->cp_wkey != NULL ||
 		    (dcp->cp_keylocation != NULL &&
-				strcmp(dcp->cp_keylocation, "none") != 0))
+		    strcmp(dcp->cp_keylocation, "none") != 0))
 			return (SET_ERROR(EINVAL));
 
 		return (0);
@@ -1586,7 +1587,7 @@ dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_dir_t *origindd,
 
 	/* We will now definitely be encrypting. Check the feature flag */
 	if (!spa_feature_is_enabled(parentdd->dd_pool->dp_spa,
-			SPA_FEATURE_ENCRYPTION)) {
+	    SPA_FEATURE_ENCRYPTION)) {
 		return (SET_ERROR(EOPNOTSUPP));
 	}
 
@@ -1619,7 +1620,7 @@ dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_dir_t *origindd,
 
 	/* At this point we should have a fully specified key. Check location */
 	if (dcp->cp_keylocation == NULL ||
-		!zfs_prop_valid_keylocation(dcp->cp_keylocation, B_TRUE))
+	    !zfs_prop_valid_keylocation(dcp->cp_keylocation, B_TRUE))
 		return (SET_ERROR(EINVAL));
 
 	/* Must have fully specified keyformat */
@@ -1629,7 +1630,8 @@ dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_dir_t *origindd,
 			return (SET_ERROR(EINVAL));
 		case ZFS_KEYFORMAT_PASSPHRASE:
 			/* requires pbkdf2 iters and salt */
-			if (dcp->cp_salt == 0 || dcp->cp_iters < MIN_PBKDF2_ITERATIONS)
+			if (dcp->cp_salt == 0 ||
+			    dcp->cp_iters < MIN_PBKDF2_ITERATIONS)
 				return (SET_ERROR(EINVAL));
 		default:
 			break;
@@ -1669,7 +1671,7 @@ dsl_dataset_create_crypt_sync(uint64_t dsobj, dsl_dir_t *dd,
 	/* use the new key if given or inherit from the parent */
 	if (wkey == NULL) {
 		VERIFY0(spa_keystore_wkey_hold_ddobj(dp->dp_spa,
-			    dd->dd_parent->dd_object, FTAG, &wkey));
+		    dd->dd_parent->dd_object, FTAG, &wkey));
 	} else {
 		wkey->wk_ddobj = dd->dd_object;
 	}
@@ -1683,7 +1685,7 @@ dsl_dataset_create_crypt_sync(uint64_t dsobj, dsl_dir_t *dd,
 		dsl_dataset_activate_feature(dsobj, SPA_FEATURE_ENCRYPTION, tx);
 	} else if (origin->ds_dir->dd_crypto_obj != 0) {
 		dd->dd_crypto_obj = dsl_crypto_key_clone_sync(origin->ds_dir,
-			wkey, tx);
+		    wkey, tx);
 	}
 
 	/* zapify the dd so that we can add the crypto key obj to it */
@@ -1906,6 +1908,6 @@ error:
 
 	if (dck != NULL)
 		spa_keystore_dsl_key_rele(spa, dck, FTAG);
-	
+
 	return (ret);
 }

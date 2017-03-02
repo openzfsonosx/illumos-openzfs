@@ -7194,7 +7194,7 @@ zfs_do_change_key(int argc, char **argv)
 	}
 
 	zhp = zfs_open(g_zfs, argv[argc - 1],
-		ZFS_TYPE_FILESYSTEM | ZFS_TYPE_VOLUME);
+	    ZFS_TYPE_FILESYSTEM | ZFS_TYPE_VOLUME);
 	if (zhp == NULL)
 		usage(B_FALSE);
 

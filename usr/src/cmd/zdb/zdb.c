@@ -1595,7 +1595,7 @@ open_objset(const char *path, dmu_objset_type_t type, void *tag, objset_t **osp)
 	uint64_t version = 0;
 
 	VERIFY3P(sa_os, ==, NULL);
-	err = dmu_objset_own(path, type, B_TRUE, tag, osp);
+	err = dmu_objset_own(path, type, B_TRUE, B_FALSE, tag, osp);
 	if (err != 0) {
 		(void) fprintf(stderr, "failed to own dataset '%s': %s\n", path,
 		    strerror(err));
@@ -2413,6 +2413,7 @@ dump_one_dir(const char *dsname, void *arg)
 	if (error != 0) {
 		(void) printf("Could not open %s, error %d\n", dsname, error);
 		return (0);
+	}
 
 	for (spa_feature_t f = 0; f < SPA_FEATURES; f++) {
 		if (!dmu_objset_ds(os)->ds_feature_inuse[f])

@@ -333,6 +333,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 	char mntopts[MNT_LINE_MAX];
 	libzfs_handle_t *hdl = zhp->zfs_hdl;
 	uint64_t keystatus;
+	int rc;
 
 	if (options == NULL)
 		mntopts[0] = '\0';
@@ -375,7 +376,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 				    "encryption key not loaded"));
 				return (zfs_error_fmt(hdl, EZFS_MOUNTFAILED,
 				    dgettext(TEXT_DOMAIN, "cannot mount '%s'"),
-					    mountpoint));
+				    mountpoint));
 			}
 		}
 

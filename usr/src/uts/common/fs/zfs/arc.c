@@ -923,8 +923,8 @@ typedef struct arc_buf_hdr_crypt {
 	dmu_object_type_t	b_ot;		/* object type */
 	uint32_t		b_ebufcnt;	/* number or encryped buffers */
 	uint64_t		b_dsobj;	/* for looking up key */
-	uint8_t                 b_salt[ZIO_DATA_SALT_LEN];
-	uint8_t                 b_iv[ZIO_DATA_IV_LEN];
+	uint8_t		b_salt[ZIO_DATA_SALT_LEN];
+	uint8_t		b_iv[ZIO_DATA_IV_LEN];
 
 	/*
 	 * Technically this could be removed since we will always be able to
@@ -933,7 +933,7 @@ typedef struct arc_buf_hdr_crypt {
 	 * also allows us to assert that L2ARC data is properly encrypted to
 	 * match the data in the main storage pool.
 	 */
-	uint8_t                 b_mac[ZIO_DATA_MAC_LEN];
+	uint8_t		b_mac[ZIO_DATA_MAC_LEN];
 } arc_buf_hdr_crypt_t;
 
 typedef struct l2arc_dev l2arc_dev_t;
@@ -2092,7 +2092,7 @@ arc_buf_untransform_in_place(arc_buf_t *buf, kmutex_t *hash_lock)
 	if (!ARC_BUF_ENCRYPTED(buf))
 		goto out_unlock;
 
-	zio_crypt_copy_dnode_bonus(hdr->b_l1hdr.b_pabd, buf->b_data,
+	zio_crypt_copy_dnode_bonus(hdr->b_l1hdr.b_pdata, buf->b_data,
 	    arc_buf_size(buf));
 	buf->b_flags &= ~ARC_BUF_FLAG_ENCRYPTED;
 	buf->b_flags &= ~ARC_BUF_FLAG_COMPRESSED;
@@ -2167,12 +2167,12 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, arc_fill_flags_t flags)
 		ASSERT(!hdr_compressed);
 		ASSERT(!compressed);
 		ASSERT(!encrypted);
-		
+
 		if (HDR_ENCRYPTED(hdr) && ARC_BUF_ENCRYPTED(buf)) {
 			ASSERT3U(hdr->b_crypt_hdr.b_ot, ==, DMU_OT_DNODE);
 			arc_buf_untransform_in_place(buf, hash_lock);
 		}
-		
+
 		/* Compute the hdr's checksum if necessary */
 		arc_cksum_compute(buf);
 		return (0);
@@ -3411,7 +3411,7 @@ arc_hdr_realloc_crypt(arc_buf_hdr_t *hdr, boolean_t encrypt)
 	 * a small race condition that could trigger ASSERTs.
 	 */
 	(void) refcount_add(&nhdr->b_l1hdr.b_refcnt, FTAG);
-	
+
 	for (buf = nhdr->b_l1hdr.b_buf; buf != NULL; buf = buf->b_next) {
 		mutex_enter(&buf->b_evict_lock);
 		buf->b_hdr = nhdr;
@@ -5073,7 +5073,6 @@ arc_read_done(zio_t *zio)
 			    hdr->b_crypt_hdr.b_mac);
 		} else {
 			zio_crypt_decode_mac_bp(bp, hdr->b_crypt_hdr.b_mac);
-			bcopy(tmpiv, hdr->b_crypt_hdr.b_iv, DATA_IV_LEN);
 		}
 	}
 
@@ -7112,13 +7111,12 @@ l2arc_read_done(zio_t *zio)
 			zio_crypt_decode_params_bp(bp, salt, iv);
 			zio_crypt_decode_mac_bp(bp, mac);
 
-			tfm_error = zio_do_crypt_data(B_FALSE, &dck->dck_key, salt,
-			    BP_GET_TYPE(bp), iv, mac, HDR_GET_PSIZE(hdr), ebuf,
-			    hdr->b_l1hdr.b_pdata);
+			tfm_error = zio_do_crypt_data(B_FALSE, &dck->dck_key,
+			    salt, BP_GET_TYPE(bp), iv, mac, HDR_GET_PSIZE(hdr),
+			    ebuf, hdr->b_l1hdr.b_pdata);
 
 			spa_keystore_dsl_key_rele(spa, dck, FTAG);
 		}
-		
 
 		if (tfm_error == 0) {
 			arc_free_data_buf(hdr, hdr->b_l1hdr.b_pdata,
@@ -7411,7 +7409,7 @@ l2arc_apply_transforms(spa_t *spa, arc_buf_hdr_t *hdr, void **buf_out,
 
 		ret = zio_do_crypt_data(B_TRUE, &dck->dck_key,
 		    hdr->b_crypt_hdr.b_salt, hdr->b_crypt_hdr.b_ot,
-			hdr->b_crypt_hdr.b_iv, mac, csize, to_write, ebuf);
+		    hdr->b_crypt_hdr.b_iv, mac, csize, to_write, ebuf);
 		if (ret != 0)
 			goto error;
 

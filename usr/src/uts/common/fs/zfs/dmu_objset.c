@@ -593,9 +593,6 @@ dmu_objset_own(const char *name, dmu_objset_type_t type,
 
 	dsl_pool_rele(dp, FTAG);
 
-	if (dmu_objset_userobjspace_upgradable(*osp))
-		dmu_objset_userobjspace_upgrade(*osp);
-
 	return (0);
 }
 
@@ -665,7 +662,7 @@ void
 dmu_objset_disown(objset_t *os, boolean_t key_needed, void *tag)
 {
 	dsl_dataset_disown(os->os_dsl_dataset,
-		(key_needed) ? DS_HOLD_FLAG_DECRYPT : 0, tag);
+	    (key_needed) ? DS_HOLD_FLAG_DECRYPT : 0, tag);
 }
 
 void
@@ -910,7 +907,7 @@ dmu_objset_create_sync(void *arg, dmu_tx_t *tx)
 	blkptr_t *bp;
 	objset_t *os;
 	zio_t *rzio;
-	
+
 	VERIFY0(dsl_dir_hold(dp, doca->doca_name, FTAG, &pdd, &tail));
 
 	obj = dsl_dataset_create_sync(pdd, tail, NULL, doca->doca_flags,

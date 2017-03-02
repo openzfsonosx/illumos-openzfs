@@ -1178,7 +1178,7 @@ try_again:
 		goto error;
 
 	correctible = B_FALSE;
-	
+
 	/* pass the wrapping key and noop flag to the ioctl */
 	ret = lzc_load_key(zhp->zfs_name, noop, key_data, WRAPPING_KEY_LEN);
 	if (ret != 0) {
@@ -1190,7 +1190,7 @@ try_again:
 			break;
 		case EEXIST:
 			zfs_error_aux(zhp->zfs_hdl, dgettext(TEXT_DOMAIN,
-			   "Key already loaded for '%s'."), zfs_get_name(zhp));
+			    "Key already loaded for '%s'."), zfs_get_name(zhp));
 			break;
 		case EBUSY:
 			zfs_error_aux(zhp->zfs_hdl, dgettext(TEXT_DOMAIN,
@@ -1200,7 +1200,7 @@ try_again:
 			correctible = B_TRUE;
 			zfs_error_aux(zhp->zfs_hdl, dgettext(TEXT_DOMAIN,
 			    "Incorrect key provided for '%s'."),
-				zfs_get_name(zhp));
+			    zfs_get_name(zhp));
 			break;
 		}
 		goto error;
@@ -1229,7 +1229,7 @@ error:
 		attempts++;
 		goto try_again;
 	}
-	
+
 	return (ret);
 }
 
