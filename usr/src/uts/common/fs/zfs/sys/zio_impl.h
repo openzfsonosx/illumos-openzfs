@@ -105,10 +105,11 @@ extern "C" {
  * encrypted, this stage determines how the encryption metadata is stored in
  * the bp. Decryption is performed during ZIO_STAGE_READ_BP_INIT as a transform
  * callback. Encryption is also mutually exclusive with nopwrite, because
- * encrypted blocks with the same plaintext will not have matching ciphertexts.
- * For dedup blocks we deterministically generate the IV by performing a
- * SHA256-HMAC of the plaintext, so we can actually still do dedup. See the
- * block comment in zio_crypt.c for details.
+ * blocks with the same plaintext will be encrypted with different salts and
+ * therefore different IV's (if dedup is off), and therefore have different
+ * ciphertexts. For dedup blocks we deterministically generate the IV by
+ * performing a SHA256-HMAC of the plaintext, so we can actually still do
+ * dedup. See the block comment in zio_crypt.c for details.
  */
 
 /*

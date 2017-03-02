@@ -291,7 +291,7 @@ int dmu_objset_hold(const char *name, void *tag, objset_t **osp);
 int dmu_objset_own(const char *name, dmu_objset_type_t type,
     boolean_t readonly, boolean_t key_required, void *tag, objset_t **osp);
 void dmu_objset_rele(objset_t *os, void *tag);
-void dmu_objset_disown(objset_t *os, void *tag);
+void dmu_objset_disown(objset_t *os, boolean_t key_required, void *tag);
 int dmu_objset_open_ds(struct dsl_dataset *ds, objset_t **osp);
 
 void dmu_objset_evict_dbufs(objset_t *os);
@@ -445,7 +445,8 @@ void dmu_write_policy(objset_t *os, dnode_t *dn, int level, int wp,
 void dmu_write_policy_override_compress(struct zio_prop *zp,
     enum zio_compress compress);
 void dmu_write_policy_override_encrypt(struct zio_prop *zp,
-    enum zio_compress compress, uint8_t *salt, uint8_t *iv, uint8_t *mac);
+    enum zio_compress compress, const uint8_t *salt, const uint8_t *iv,
+    const uint8_t *mac);
 /*
  * The bonus data is accessed more or less like a regular buffer.
  * You must dmu_bonus_hold() to get the buffer, which will give you a

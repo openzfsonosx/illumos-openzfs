@@ -26,14 +26,14 @@
 #
 
 #
-# Copyright (c) 2016, Datto, Inc. All rights reserved.
+# Copyright (c) 2017, Datto, Inc. All rights reserved.
 #
 
 . $STF_SUITE/tests/functional/cli_root/zfs_key/zfs_key_common.kshlib
 
 #
 # DESCRIPTION:
-# 'zfs key -l' should load a valid key into the ZFS keystore.
+# 'zfs load-key' should load a valid key into the ZFS keystore.
 #
 # STRATEGY:
 # 1. Create an encrypted dataset
@@ -51,12 +51,12 @@ function cleanup
 
 log_onexit cleanup
 
-log_assert "'zfs key -l' should properly load a valid wrapping key"
+log_assert "'zfs load-key' should properly load a valid wrapping key"
 
 create_default_encrypted_dataset
 log_must $ZFS unmount $TESTPOOL/$CRYPTDS
-log_must $ZFS key -u $TESTPOOL/$CRYPTDS
-log_must eval '$ECHO $PKEY | $ZFS key -l $TESTPOOL/$CRYPTDS'
+log_must $ZFS unload-key $TESTPOOL/$CRYPTDS
+log_must eval '$ECHO $PKEY | $ZFS load-key $TESTPOOL/$CRYPTDS'
 check_key_available $TESTPOOL/$CRYPTDS
 
-log_pass "'zfs key -l' properly loads a valid wrapping key"
+log_pass "'zfs load-key' properly loads a valid wrapping key"

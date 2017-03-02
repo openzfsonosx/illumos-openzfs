@@ -75,6 +75,8 @@ struct objset {
 	spa_t *os_spa;
 	arc_buf_t *os_phys_buf;
 	objset_phys_t *os_phys;
+	boolean_t os_encrypted;
+
 	/*
 	 * The following "special" dnodes have no parent, are exempt
 	 * from dnode_move(), and are not recorded in os_dnodes, but they
@@ -93,7 +95,6 @@ struct objset {
 	enum zio_compress os_compress;
 	uint8_t os_copies;
 	enum zio_checksum os_dedup_checksum;
-	boolean_t os_encrypted;
 	boolean_t os_dedup_verify;
 	zfs_logbias_op_t os_logbias;
 	zfs_cache_type_t os_primary_cache;
@@ -153,9 +154,10 @@ int dmu_objset_own(const char *name, dmu_objset_type_t type,
 int dmu_objset_own_obj(struct dsl_pool *dp, uint64_t obj,
     dmu_objset_type_t type, boolean_t readonly, boolean_t key_required,
     void *tag, objset_t **osp);
-void dmu_objset_refresh_ownership(objset_t *os, void *tag);
+void dmu_objset_refresh_ownership(objset_t *os, boolean_t key_needed,
+    void *tag);
 void dmu_objset_rele(objset_t *os, void *tag);
-void dmu_objset_disown(objset_t *os, void *tag);
+void dmu_objset_disown(objset_t *os, boolean_t key_required, void *tag);
 int dmu_objset_from_ds(struct dsl_dataset *ds, objset_t **osp);
 
 void dmu_objset_stats(objset_t *os, nvlist_t *nv);

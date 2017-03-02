@@ -60,10 +60,12 @@ typedef struct arc_buf_hdr arc_buf_hdr_t;
 typedef struct arc_buf arc_buf_t;
 
 /*
- * With the advent of encrypted data in the ARC it is now possible for
- * legitimate errors to arise while transforming data into its desired format.
- * As a result the "error" parameter of arc_read_done_func_t is used to indicate
- * transform errors even if there is no assoicated zio.
+ * Because the ARC can store encrypted data, errors (not due to bugs) may arise
+ * while transforming data into its desired format - specifically, when
+ * decrypting, the key may not be present, or the HMAC may not be correct,
+ * which signifies deliberate tampering with the on-disk state
+ * (assuming that the checksum was correct). The "error" parameter will be
+ * nonzero in this case, even if there is no associated zio.
  */
 typedef void arc_read_done_func_t(zio_t *zio, int error, arc_buf_t *buf,
     void *private);
@@ -101,7 +103,8 @@ typedef enum arc_flags
 	ARC_FLAG_L2_WRITING		= 1 << 11,	/* write in progress */
 	ARC_FLAG_L2_EVICTED		= 1 << 12,	/* evicted during I/O */
 	ARC_FLAG_L2_WRITE_HEAD		= 1 << 13,	/* head of write list */
-	ARC_FLAG_ENCRYPT		= 1 << 14,	/* encrypted on disk */
+	/* encrypted on disk (may or may not be encrypted in memory) */
+	ARC_FLAG_ENCRYPT		= 1 << 14,
 	/* indicates that the buffer contains metadata (otherwise, data) */
 	ARC_FLAG_BUFC_METADATA		= 1 << 15,
 
@@ -135,6 +138,10 @@ typedef enum arc_flags
 typedef enum arc_buf_flags {
 	ARC_BUF_FLAG_SHARED		= 1 << 0,
 	ARC_BUF_FLAG_COMPRESSED		= 1 << 1,
+	/*
+	 * indicates whether this arc_buf_t is encrypted, regardless of
+	 * state on-disk
+	 */
 	ARC_BUF_FLAG_ENCRYPTED		= 1 << 2
 } arc_buf_flags_t;
 

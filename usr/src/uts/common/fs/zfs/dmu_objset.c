@@ -178,19 +178,6 @@ compression_changed_cb(void *arg, uint64_t newval)
 }
 
 static void
-encryption_changed_cb(void *arg, uint64_t newval)
-{
-	objset_t *os = arg;
-
-	/*
-	 * Inheritance and range checking should have been done by now.
-	 */
-	ASSERT(newval != ZIO_CRYPT_INHERIT && newval != ZIO_CRYPT_ON);
-
-	os->os_encrypted = (newval != ZIO_CRYPT_OFF ? B_TRUE : B_FALSE);
-}
-
-static void
 copies_changed_cb(void *arg, uint64_t newval)
 {
 	objset_t *os = arg;
@@ -382,6 +369,8 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 	if (ds != NULL) {
 		boolean_t needlock = B_FALSE;
 
+		os->os_encrypted = (ds->ds_dir->dd_crypto_obj != 0);
+
 		/*
 		 * Note: it's valid to open the objset if the dataset is
 		 * long-held, in which case the pool_config lock will not
@@ -398,11 +387,6 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 			err = dsl_prop_register(ds,
 			    zfs_prop_to_name(ZFS_PROP_SECONDARYCACHE),
 			    secondary_cache_changed_cb, os);
-		}
-		if (err == 0) {
-			err = dsl_prop_register(ds,
-			    zfs_prop_to_name(ZFS_PROP_ENCRYPTION),
-			    encryption_changed_cb, os);
 		}
 		if (!ds->ds_is_snapshot) {
 			if (err == 0) {
@@ -569,15 +553,13 @@ dmu_objset_own_impl(dsl_dataset_t *ds, dmu_objset_type_t type,
 
 	err = dmu_objset_from_ds(ds, osp);
 	if (err != 0) {
-		dsl_dataset_disown(ds, tag);
+		return (err);
 	} else if (type != DMU_OST_ANY && type != (*osp)->os_phys->os_type) {
-		dsl_dataset_disown(ds, tag);
 		return (SET_ERROR(EINVAL));
 	} else if (!readonly && dsl_dataset_is_snapshot(ds)) {
-		dsl_dataset_disown(ds, tag);
 		return (SET_ERROR(EROFS));
 	}
-	return (err);
+	return (0);
 }
 
 /*
@@ -592,19 +574,29 @@ dmu_objset_own(const char *name, dmu_objset_type_t type,
 	dsl_pool_t *dp;
 	dsl_dataset_t *ds;
 	int err;
+	int flags = (key_required) ? DS_HOLD_FLAG_DECRYPT : 0;
 
 	err = dsl_pool_hold(name, FTAG, &dp);
 	if (err != 0)
 		return (err);
-	err = dsl_dataset_own(dp, name, tag, key_required, &ds);
+	err = dsl_dataset_own(dp, name, flags, tag, &ds);
 	if (err != 0) {
 		dsl_pool_rele(dp, FTAG);
 		return (err);
 	}
 	err = dmu_objset_own_impl(ds, type, readonly, tag, osp);
+	if (err != 0) {
+		dsl_dataset_disown(ds, flags, tag);
+		dsl_pool_rele(dp, FTAG);
+		return (err);
+	}
+
 	dsl_pool_rele(dp, FTAG);
 
-	return (err);
+	if (dmu_objset_userobjspace_upgradable(*osp))
+		dmu_objset_userobjspace_upgrade(*osp);
+
+	return (0);
 }
 
 int
@@ -613,12 +605,19 @@ dmu_objset_own_obj(dsl_pool_t *dp, uint64_t obj, dmu_objset_type_t type,
 {
 	dsl_dataset_t *ds;
 	int err;
+	int flags = (key_required) ? DS_HOLD_FLAG_DECRYPT: 0;
 
-	err = dsl_dataset_own_obj(dp, obj, tag, key_required, &ds);
+	err = dsl_dataset_own_obj(dp, obj, flags, tag, &ds);
 	if (err != 0)
 		return (err);
 
-	return (dmu_objset_own_impl(ds, type, readonly, tag, osp));
+	err = dmu_objset_own_impl(ds, type, readonly, tag, osp);
+	if (err != 0) {
+		dsl_dataset_disown(ds, flags, tag);
+		return (err);
+	}
+
+	return (0);
 }
 
 void
@@ -641,11 +640,10 @@ dmu_objset_rele(objset_t *os, void *tag)
  * same name so that it can be partially torn down and reconstructed.
  */
 void
-dmu_objset_refresh_ownership(objset_t *os, void *tag)
+dmu_objset_refresh_ownership(objset_t *os, boolean_t key_needed, void *tag)
 {
 	dsl_pool_t *dp;
 	dsl_dataset_t *ds, *newds;
-	boolean_t key_needed;
 	char name[MAXNAMELEN];
 
 	ds = os->os_dsl_dataset;
@@ -653,26 +651,21 @@ dmu_objset_refresh_ownership(objset_t *os, void *tag)
 	VERIFY3P(ds->ds_owner, ==, tag);
 	VERIFY(dsl_dataset_long_held(ds));
 
-	if (os->os_encrypted &&
-	    (spa_keystore_lookup_key(os->os_spa,
-	    os->os_dsl_dataset->ds_object, NULL, NULL) == 0))
-		key_needed = B_TRUE;
-	else
-		key_needed = B_FALSE;
-
 	dsl_dataset_name(ds, name);
 	dp = dmu_objset_pool(os);
 	dsl_pool_config_enter(dp, FTAG);
-	dmu_objset_disown(os, tag);
-	VERIFY0(dsl_dataset_own(dp, name, tag, key_needed, &newds));
+	dmu_objset_disown(os, key_needed, tag);
+	VERIFY0(dsl_dataset_own(dp, name,
+	    (key_needed) ? DS_HOLD_FLAG_DECRYPT : 0, tag, &newds));
 	VERIFY3P(newds, ==, os->os_dsl_dataset);
 	dsl_pool_config_exit(dp, FTAG);
 }
 
 void
-dmu_objset_disown(objset_t *os, void *tag)
+dmu_objset_disown(objset_t *os, boolean_t key_needed, void *tag)
 {
-	dsl_dataset_disown(os->os_dsl_dataset, tag);
+	dsl_dataset_disown(os->os_dsl_dataset,
+		(key_needed) ? DS_HOLD_FLAG_DECRYPT : 0, tag);
 }
 
 void
@@ -749,6 +742,8 @@ dmu_objset_evict(objset_t *os)
 	} else {
 		mutex_exit(&os->os_lock);
 	}
+
+
 }
 
 void
@@ -889,7 +884,7 @@ dmu_objset_create_check(void *arg, dmu_tx_t *tx)
 		return (SET_ERROR(EEXIST));
 	}
 
-	error = dmu_objset_create_encryption_check(pdd, doca->doca_dcp);
+	error = dmu_objset_create_crypt_check(pdd, NULL, doca->doca_dcp);
 	if (error != 0) {
 		dsl_dir_rele(pdd, FTAG);
 		return (error);
@@ -914,38 +909,48 @@ dmu_objset_create_sync(void *arg, dmu_tx_t *tx)
 	uint64_t obj;
 	blkptr_t *bp;
 	objset_t *os;
-
+	zio_t *rzio;
+	
 	VERIFY0(dsl_dir_hold(dp, doca->doca_name, FTAG, &pdd, &tail));
 
 	obj = dsl_dataset_create_sync(pdd, tail, NULL, doca->doca_flags,
 	    doca->doca_cred, doca->doca_dcp, tx);
 
-	VERIFY0(dsl_dataset_hold_obj(pdd->dd_pool, obj, FTAG, &ds));
+	VERIFY0(dsl_dataset_hold_obj_flags(pdd->dd_pool, obj,
+	    DS_HOLD_FLAG_DECRYPT, FTAG, &ds));
 	rrw_enter(&ds->ds_bp_rwlock, RW_READER, FTAG);
 	bp = dsl_dataset_get_blkptr(ds);
 	os = dmu_objset_create_impl(pdd->dd_pool->dp_spa,
 	    ds, bp, doca->doca_type, tx);
 	rrw_exit(&ds->ds_bp_rwlock, FTAG);
 
-	/*
-	 * At this time, the objset is not owned and so it does not have its
-	 * key mapping in the keystore. This mapping might be needed to create
-	 * encrypted objects in the dataset. We create it here manually, but we
-	 * cannot destroy it until after syncing is complete. Therefore any
-	 * function that calls this must clean up the key mapping after syncing.
-	 */
-	if (os->os_encrypted) {
-		(void) spa_keystore_create_mapping(os->os_spa,
-		    os->os_dsl_dataset, doca);
-	}
-
 	if (doca->doca_userfunc != NULL) {
 		doca->doca_userfunc(os, doca->doca_userarg,
 		    doca->doca_cred, tx);
 	}
 
+	/*
+	 * doca_userfunc() may write out some data that needs to be encrypted
+	 * if the dataset is encrypted (specifically the root directory).
+	 * However, this data won't normally be written out by the zio layer
+	 * until after this sync function has returned so we cannot remove
+	 * the key mappings until then. In this case, we call dmu_objset_sync()
+	 * to ensure the encrypted data is written out before we release the
+	 * dataset.
+	 */
+	if (os->os_encrypted) {
+		rzio = zio_root(dp->dp_spa, NULL, NULL, ZIO_FLAG_MUSTSUCCEED);
+		dmu_objset_sync(os, rzio, tx);
+		VERIFY0(zio_wait(rzio));
+		dmu_objset_do_userquota_updates(os, tx);
+
+		rzio = zio_root(dp->dp_spa, NULL, NULL, ZIO_FLAG_MUSTSUCCEED);
+		dmu_objset_sync(os, rzio, tx);
+		VERIFY0(zio_wait(rzio));
+	}
+
 	spa_history_log_internal_ds(ds, "create", tx, "");
-	dsl_dataset_rele(ds, FTAG);
+	dsl_dataset_rele_flags(ds, DS_HOLD_FLAG_DECRYPT, FTAG);
 	dsl_dir_rele(pdd, FTAG);
 }
 
@@ -954,8 +959,6 @@ dmu_objset_create(const char *name, dmu_objset_type_t type, uint64_t flags,
     dsl_crypto_params_t *dcp, void (*func)(objset_t *os, void *arg,
     cred_t *cr, dmu_tx_t *tx), void *arg)
 {
-	int ret;
-	objset_t *os;
 	dmu_objset_create_arg_t doca;
 
 	doca.doca_name = name;
@@ -966,24 +969,9 @@ dmu_objset_create(const char *name, dmu_objset_type_t type, uint64_t flags,
 	doca.doca_type = type;
 	doca.doca_dcp = dcp;
 
-	ret = dsl_sync_task(name,
+	return (dsl_sync_task(name,
 	    dmu_objset_create_check, dmu_objset_create_sync, &doca,
-	    5, ZFS_SPACE_CHECK_NORMAL);
-	if (ret)
-		return (ret);
-
-	ret = dmu_objset_hold(name, FTAG, &os);
-	if (ret)
-		return (ret);
-
-	/* See comment in dmu_objset_create_sync() for details */
-	if (os->os_encrypted)
-		(void) spa_keystore_remove_mapping(os->os_spa,
-		    os->os_dsl_dataset, &doca);
-
-	dmu_objset_rele(os, FTAG);
-
-	return (0);
+	    5, ZFS_SPACE_CHECK_NORMAL));
 }
 
 typedef struct dmu_objset_clone_arg {
@@ -1026,16 +1014,19 @@ dmu_objset_clone_check(void *arg, dmu_tx_t *tx)
 	}
 
 	error = dsl_dataset_hold(dp, doca->doca_origin, FTAG, &origin);
-	if (error != 0)
+	if (error != 0) {
+		dsl_dir_rele(pdd, FTAG);
 		return (error);
+	}
 
 	/* You can only clone snapshots, not the head datasets. */
 	if (!origin->ds_is_snapshot) {
 		dsl_dataset_rele(origin, FTAG);
+		dsl_dir_rele(pdd, FTAG);
 		return (SET_ERROR(EINVAL));
 	}
 
-	error = dmu_objset_clone_encryption_check(pdd, origin->ds_dir,
+	error = dmu_objset_create_crypt_check(pdd, origin->ds_dir,
 	    doca->doca_dcp);
 	if (error != 0) {
 		dsl_dataset_rele(origin, FTAG);

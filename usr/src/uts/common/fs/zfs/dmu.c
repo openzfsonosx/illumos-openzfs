@@ -588,10 +588,8 @@ dmu_buf_rele_array(dmu_buf_t **dbp_fake, int numbufs, void *tag)
  * indirect blocks prefeteched will be those that point to the blocks containing
  * the data starting at offset, and continuing to offset + len.
  *
- * Note that if the indirect blocks above the blocks being prefetched are not in
- * cache, they will be asychronously read in. Also, callers should make sure
- * not to attempt to prefetch encrypted data without the relevant encryption key
- * being loaded.
+ * Note that if the indirect blocks above the blocks being prefetched are not
+ * in cache, they will be asychronously read in.
  */
 void
 dmu_prefetch(objset_t *os, uint64_t object, int64_t level, uint64_t offset,
@@ -1952,9 +1950,8 @@ dmu_write_policy(objset_t *os, dnode_t *dn, int level, int wp, zio_prop_t *zp)
 	    !(wp & WP_NOFILL) && level <= 0) {
 		encrypt = B_TRUE;
 		nopwrite = B_FALSE;
+		copies = MIN(copies, SPA_DVAS_PER_BP - 1);
 
-		if (copies >= SPA_DVAS_PER_BP)
-			copies = SPA_DVAS_PER_BP - 1;
 		if (type == DMU_OT_DNODE)
 			compress = ZIO_COMPRESS_EMPTY;
 	}
@@ -1989,14 +1986,14 @@ dmu_write_policy_override_compress(zio_prop_t *zp, enum zio_compress compress)
 
 /*
  * Raw encrypted data must pass a few values to the zio layer. The encryption
- * parameters must be passsed in to the policy so that they can be written along
- * with the block. In addition, raw encrypted writes must also be raw compressed
- * since encryption is applied after compression, so we must set that field here
- * as well.
+ * parameters must be passsed in with the policy so that they can be written
+ * along with the block. In addition, raw encrypted writes must also be raw
+ * compressed since encryption is applied after compression, so we must set
+ * that field here as well.
  */
 void
 dmu_write_policy_override_encrypt(zio_prop_t *zp, enum zio_compress compress,
-    uint8_t *salt, uint8_t *iv, uint8_t *mac)
+    const uint8_t *salt, const uint8_t *iv, const uint8_t *mac)
 {
 	ASSERT3U(compress, !=, ZIO_COMPRESS_INHERIT);
 	ASSERT3U(zp->zp_level, <=, 0);

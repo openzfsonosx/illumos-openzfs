@@ -88,7 +88,7 @@ typedef struct zil_header {
  * number passed in the blk_cksum field of the blkptr_t
  */
 typedef struct zil_chain {
-	uint64_t zc_mac; /* mac for encryption */
+	uint64_t zc_mac;	/* mac for encryption */
 	blkptr_t zc_next_blk;	/* next block in chain */
 	uint64_t zc_nused;	/* bytes in log block used */
 	zio_eck_t zc_eck;	/* block trailer */

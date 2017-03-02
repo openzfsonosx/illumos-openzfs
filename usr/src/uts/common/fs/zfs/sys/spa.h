@@ -223,6 +223,87 @@ typedef struct zio_cksum_salt {
  */
 
 /*
+ * The blkptr_t's of encrypted blocks also need to store the encryption
+ * parameters so that the block can be decrypted. TThis layout is as follows:
+ *
+ *	64	56	48	40	32	24	16	8	0
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * 0	|		vdev1		| GRID  |	  ASIZE		|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * 1	|G|			 offset1				|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * 2	|		vdev2		| GRID  |	  ASIZE		|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * 3	|G|			 offset2				|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * 4	|			salt					|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * 5	|			IV1					|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * 6	|BDX|lvl| type	| cksum |E| comp|    PSIZE	|     LSIZE	|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * 7	|			padding					|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * 8	|			padding					|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * 9	|			physical birth txg			|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * a	|			logical birth txg			|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * b	|		IV2		|		fill count	|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * c	|			checksum[0]				|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * d	|			checksum[1]				|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * e	|			MAC[1]					|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ * f	|			MAC[2]					|
+ *	+-------+-------+-------+-------+-------+-------+-------+-------+
+ *
+ * Legend:
+ *
+ * vdev		virtual device ID
+ * offset	offset into virtual device
+ * LSIZE	logical size
+ * PSIZE	physical size (after compression)
+ * ASIZE	allocated size (including RAID-Z parity and gang block headers)
+ * salt		First 64 bits of encryption IV
+ * IV1		First 64 bits of encryption IV
+ * GRID		RAID-Z layout information (reserved for future use)
+ * cksum	checksum function
+ * comp		compression function
+ * G		gang block indicator
+ * B		byteorder (endianness)
+ * D		dedup
+ * X		encryption (set to 1)
+ * E		blkptr_t contains embedded data (set to 0, see below)
+ * lvl		level of indirection
+ * type		DMU object type
+ * phys birth	txg of block allocation; zero if same as logical birth txg
+ * log. birth	transaction group in which the block was logically born
+ * fill count	number of non-zero blocks under this bp
+ * IV2		Last 32 bits of encryption IV
+ * checksum[2]	256-bit checksum of the data this bp describes
+ * MAC[2]	message authentication code
+ *
+ * The additional encryption parameters are the salt, IV, and MAC which are
+ * explained in greater detail in the block comment at the top of zio_crypt.c.
+ * The MAC occupies half of the checksum space since it serves a very similar
+ * purpose: to prevent data corruption on disk. The only functional difference
+ * is that the MAC provides additional protection against malicious disk
+ * tampering. We use the 3rd vdev to store the salt and first 64 bits of the IV.
+ * as a result encrypted blocks can only have 2 copies maximum instead of the
+ * normal 3. The last 32 bits are stored in the upper bits of what is usually
+ * the fill count. Note that only level 0 bocks are ever encrypted (or -2 in
+ * the case of ZIL blocks), which allows us to guarantee that these 32 bits
+ * are not trampled over by other code (see zio_crypt.c for details). The
+ * underlying encryption code looks at these values as byte arrays rather than
+ * uint64_t's, so these are always stored in little-endian format regardless
+ * of the host machine's native endianness.
+ */
+
+/*
  * "Embedded" blkptr_t's don't actually point to a block, instead they
  * have a data payload embedded in the blkptr_t itself.  See the comment
  * in blkptr.c for more details.
@@ -277,7 +358,9 @@ typedef struct zio_cksum_salt {
  * BP's so the BP_SET_* macros can be used with them.  etype, PSIZE, LSIZE must
  * be set with the BPE_SET_* macros.  BP_SET_EMBEDDED() should be called before
  * other macros, as they assert that they are only used on BP's of the correct
- * "embedded-ness".
+ * "embedded-ness". Encrypted blkptr_t's cannot be embedded because they use
+ * the payload space for encryption parameters (see the comment above on
+ * how encryption parameters are stored).
  */
 
 #define	BPE_GET_ETYPE(bp)	\
@@ -433,8 +516,14 @@ _NOTE(CONSTCOND) } while (0)
 		(bp)->blk_fill = fill;		\
 }
 
-#define	BP_GET_IV2(bp)			BF64_GET((bp)->blk_fill, 32, 32)
-#define	BP_SET_IV2(bp, iv2)		BF64_SET((bp)->blk_fill, 32, 32, iv2);
+#define	BP_GET_IV2(bp)				\
+	(ASSERT(BP_IS_ENCRYPTED(bp)),		\
+	BF64_GET((bp)->blk_fill, 32, 32))
+#define	BP_SET_IV2(bp, iv2)			\
+{						\
+	ASSERT(BP_IS_ENCRYPTED(bp));		\
+	BF64_SET((bp)->blk_fill, 32, 32, iv2);	\
+}
 
 #define	BP_GET_ASIZE(bp)	\
 	(BP_IS_EMBEDDED(bp) ? 0 : \

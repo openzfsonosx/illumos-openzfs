@@ -3591,6 +3591,35 @@ spa_l2cache_drop(spa_t *spa)
 }
 
 /*
+ * Verify encryption parameters for spa creation. If we have specified a crypt,
+ * we must have a fully speicified key, with the encryption feature enabled.
+ * Otherwise, we should not have any specified encryption parameters.
+ */
+static int
+spa_create_check_encryption_params(dsl_crypto_params_t *dcp,
+    boolean_t has_encryption)
+{
+	if (dcp->cp_crypt != ZIO_CRYPT_OFF &&
+	    dcp->cp_crypt != ZIO_CRYPT_INHERIT) {
+		if (!has_encryption || dcp->cp_wkey == NULL ||
+		    dcp->cp_keylocation == NULL ||
+		    dcp->cp_keyformat == ZFS_KEYFORMAT_NONE)
+			return (SET_ERROR(EINVAL));
+
+		if (dcp->cp_keyformat == ZFS_KEYFORMAT_PASSPHRASE &&
+		    (dcp->cp_salt == 0 || dcp->cp_iters == 0))
+			return (SET_ERROR(EINVAL));
+	} else {
+		if (dcp->cp_wkey != NULL || dcp->cp_keylocation != NULL ||
+		    dcp->cp_keyformat != ZFS_KEYFORMAT_NONE ||
+		    dcp->cp_salt != 0 || dcp->cp_iters != 0)
+			return (SET_ERROR(EINVAL));
+	}
+
+	return (0);
+}
+
+/*
  * Pool Creation
  */
 int
@@ -3606,7 +3635,7 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 	uint64_t txg = TXG_INITIAL;
 	nvlist_t **spares, **l2cache;
 	uint_t nspares, nl2cache;
-	uint64_t version, obj;
+	uint64_t version, obj, root_dsobj = 0;
 	boolean_t has_features;
 	boolean_t has_encryption;
 	spa_feature_t feat;
@@ -3649,12 +3678,15 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 		}
 	}
 
-	if (!has_encryption && dcp && dcp->cp_crypt != ZIO_CRYPT_OFF &&
-	    dcp->cp_crypt != ZIO_CRYPT_INHERIT) {
-		spa_deactivate(spa);
-		spa_remove(spa);
-		mutex_exit(&spa_namespace_lock);
-		return (SET_ERROR(EINVAL));
+	/* verify encryption params, if they were provided */
+	if (dcp != NULL) {
+		error = spa_create_check_encryption_params(dcp, has_encryption);
+		if (error != 0) {
+			spa_deactivate(spa);
+			spa_remove(spa);
+			mutex_exit(&spa_namespace_lock);
+			return (error);
+		}
 	}
 
 	if (has_features || nvlist_lookup_uint64(props,
@@ -3828,14 +3860,25 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 
 	dmu_tx_commit(tx);
 
-	spa->spa_sync_on = B_TRUE;
-	txg_sync_start(spa->spa_dsl_pool);
-
 	/*
-	 * We explicitly wait for the first transaction to complete so that our
-	 * bean counters are appropriately updated.
+	 * If the root dataset is encrypted we will need to create key mappings
+	 * for the zio layer before we start to write any data to disk and hold
+	 * them until after the first txg has been synced. Waiting for the first
+	 * transaction to complete also ensures that our bean counters are
+	 * appropriately updated.
 	 */
-	txg_wait_synced(spa->spa_dsl_pool, txg);
+	if (dp->dp_root_dir->dd_crypto_obj != 0) {
+		root_dsobj = dsl_dir_phys(dp->dp_root_dir)->dd_head_dataset_obj;
+		VERIFY0(spa_keystore_create_mapping_impl(spa, root_dsobj,
+		    dp->dp_root_dir, FTAG));
+	}
+
+	spa->spa_sync_on = B_TRUE;
+	txg_sync_start(dp);
+	txg_wait_synced(dp, txg);
+
+	if (dp->dp_root_dir->dd_crypto_obj != 0)
+		VERIFY0(spa_keystore_remove_mapping(spa, root_dsobj, FTAG));
 
 	spa_config_sync(spa, B_FALSE, B_TRUE);
 	spa_event_notify(spa, NULL, ESC_ZFS_POOL_CREATE);

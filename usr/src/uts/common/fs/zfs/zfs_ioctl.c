@@ -31,7 +31,7 @@
  * Copyright (c) 2013 Steven Hartland. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2016 Toomas Soome <tsoome@me.com>
- * Copyright (c) 2016, Datto, Inc. All rights reserved.
+ * Copyright (c) 2017, Datto, Inc. All rights reserved.
  */
 
 /*
@@ -585,12 +585,12 @@ zfs_set_slabel_policy(const char *name, char *strval, cred_t *cr)
 		 * Try to own the dataset; abort if there is any error,
 		 * (e.g., already mounted, in use, or other error).
 		 */
-		error = dmu_objset_own(name, DMU_OST_ZFS, B_TRUE, B_FALSE,
+		error = dmu_objset_own(name, DMU_OST_ZFS, B_TRUE, B_TRUE,
 		    setsl_tag, &os);
 		if (error != 0)
 			return (SET_ERROR(EPERM));
 
-		dmu_objset_disown(os, setsl_tag);
+		dmu_objset_disown(os, B_TRUE, setsl_tag);
 
 		if (new_default) {
 			needed_priv = PRIV_FILE_DOWNGRADE_SL;
@@ -1270,34 +1270,17 @@ zfs_secpolicy_release(zfs_cmd_t *zc, nvlist_t *innvl, cred_t *cr)
 }
 
 static int
-zfs_secpolicy_key(zfs_cmd_t *zc, nvlist_t *innvl, cred_t *cr)
+zfs_secpolicy_load_key(zfs_cmd_t *zc, nvlist_t *innvl, cred_t *cr)
 {
-	int ret = 0;
-	uint64_t crypto_cmd;
+	return (zfs_secpolicy_write_perms(zc->zc_name,
+	    ZFS_DELEG_PERM_LOAD_KEY, cr));
+}
 
-	ret = nvlist_lookup_uint64(innvl, "crypto_cmd", &crypto_cmd);
-	if (ret) {
-		ret = SET_ERROR(EINVAL);
-		goto out;
-	}
-
-	switch (crypto_cmd) {
-	case ZFS_IOC_KEY_LOAD_KEY:
-	case ZFS_IOC_KEY_UNLOAD_KEY:
-		ret = zfs_secpolicy_write_perms(zc->zc_name,
-		    ZFS_DELEG_PERM_LOAD_KEY, cr);
-		break;
-	case ZFS_IOC_KEY_REWRAP:
-		ret = zfs_secpolicy_write_perms(zc->zc_name,
-		    ZFS_DELEG_PERM_CHANGE_KEY, cr);
-		break;
-	default:
-		ret = SET_ERROR(EINVAL);
-		break;
-	}
-
-out:
-	return (ret);
+static int
+zfs_secpolicy_change_key(zfs_cmd_t *zc, nvlist_t *innvl, cred_t *cr)
+{
+	return (zfs_secpolicy_write_perms(zc->zc_name,
+	    ZFS_DELEG_PERM_CHANGE_KEY, cr));
 }
 
 /*
@@ -1488,7 +1471,7 @@ zfsvfs_rele(zfsvfs_t *zfsvfs, void *tag)
 	if (zfsvfs->z_vfs) {
 		VFS_RELE(zfsvfs->z_vfs);
 	} else {
-		dmu_objset_disown(zfsvfs->z_os, zfsvfs);
+		dmu_objset_disown(zfsvfs->z_os, B_TRUE, zfsvfs);
 		zfsvfs_free(zfsvfs);
 	}
 }
@@ -2442,6 +2425,7 @@ zfs_prop_set_special(const char *dsname, zprop_source_t source,
 	const char *propname = nvpair_name(pair);
 	zfs_prop_t prop = zfs_name_to_prop(propname);
 	uint64_t intval;
+	char *strval;
 	int err = -1;
 
 	if (prop == ZPROP_INVAL) {
@@ -2457,10 +2441,15 @@ zfs_prop_set_special(const char *dsname, zprop_source_t source,
 		    &pair) == 0);
 	}
 
-	if (zfs_prop_get_type(prop) == PROP_TYPE_STRING)
-		return (-1);
+	/* all special properties are numeric except for keylocation */
+	if (zfs_prop_get_type(prop) == PROP_TYPE_STRING) {
+		if (prop != ZFS_PROP_KEYLOCATION)
+			return (-1);
 
-	VERIFY(0 == nvpair_value_uint64(pair, &intval));
+		VERIFY(0 == nvpair_value_string(pair, &strval));
+	} else {
+		VERIFY(0 == nvpair_value_uint64(pair, &intval));
+	}
 
 	switch (prop) {
 	case ZFS_PROP_QUOTA:
@@ -2481,6 +2470,11 @@ zfs_prop_set_special(const char *dsname, zprop_source_t source,
 		 * Set err to -1 to force the zfs_set_prop_nvlist code down the
 		 * default path to set the value in the nvlist.
 		 */
+		if (err == 0)
+			err = -1;
+		break;
+	case ZFS_PROP_KEYLOCATION:
+		err = dsl_crypto_can_set_keylocation(dsname, strval);
 		if (err == 0)
 			err = -1;
 		break;
@@ -4511,7 +4505,7 @@ zfs_ioc_send(zfs_cmd_t *zc)
 		if (error != 0)
 			return (error);
 
-		error = dsl_dataset_hold_crypt_obj(dp, zc->zc_sendobj,
+		error = dsl_dataset_hold_obj(dp, zc->zc_sendobj,
 		    FTAG, &tosnap);
 		if (error != 0) {
 			dsl_pool_rele(dp, FTAG);
@@ -4522,7 +4516,7 @@ zfs_ioc_send(zfs_cmd_t *zc)
 			error = dsl_dataset_hold_obj(dp, zc->zc_fromobj,
 			    FTAG, &fromsnap);
 			if (error != 0) {
-				dsl_dataset_rele_crypt(tosnap, FTAG);
+				dsl_dataset_rele(tosnap, FTAG);
 				dsl_pool_rele(dp, FTAG);
 				return (error);
 			}
@@ -4533,7 +4527,7 @@ zfs_ioc_send(zfs_cmd_t *zc)
 
 		if (fromsnap != NULL)
 			dsl_dataset_rele(fromsnap, FTAG);
-		dsl_dataset_rele_crypt(tosnap, FTAG);
+		dsl_dataset_rele(tosnap, FTAG);
 		dsl_pool_rele(dp, FTAG);
 	} else {
 		file_t *fp = getf(zc->zc_cookie);
@@ -4888,7 +4882,7 @@ zfs_ioc_userspace_upgrade(zfs_cmd_t *zc)
 			error = zfs_suspend_fs(zfsvfs);
 			if (error == 0) {
 				dmu_objset_refresh_ownership(zfsvfs->z_os,
-				    zfsvfs);
+				    B_TRUE, zfsvfs);
 				error = zfs_resume_fs(zfsvfs, ds);
 			}
 		}
@@ -5621,89 +5615,111 @@ out:
 	return (error);
 }
 
+/*
+ * Load a user's wrapping key into the kernel.
+ * innvl: {
+ *     "hidden_args" -> { "wkeydata" -> value }
+ *     (optional) "noop" -> (value ignored)
+ *         presence indicated key should only be verified, not loaded
+ * }
+ */
 /* ARGSUSED */
 static int
-zfs_ioc_key(const char *dsname, nvlist_t *innvl, nvlist_t *outnvl)
+zfs_ioc_load_key(const char *dsname, nvlist_t *innvl, nvlist_t *outnvl)
 {
 	int ret = 0;
 	dsl_crypto_params_t *dcp = NULL;
-	uint64_t crypto_cmd;
-	nvlist_t *args, *hidden_args;
-	spa_t *spa;
+	nvlist_t *hidden_args;
+	boolean_t noop = nvlist_exists(innvl, "noop");
 
-	ret = spa_open(dsname, &spa, FTAG);
-	if (ret)
-		return (ret);
-
-	if (!spa_feature_is_enabled(spa, SPA_FEATURE_ENCRYPTION)) {
-		spa_close(spa, FTAG);
-		return (SET_ERROR(EINVAL));
-	}
-
-	spa_close(spa, FTAG);
-
-	if (strchr(dsname, '@') || strchr(dsname, '%')) {
+	if (strchr(dsname, '@') != NULL || strchr(dsname, '%') != NULL) {
 		ret = (SET_ERROR(EINVAL));
 		goto error;
 	}
 
-	ret = nvlist_lookup_uint64(innvl, "crypto_cmd", &crypto_cmd);
-	if (ret) {
-		ret = (SET_ERROR(EINVAL));
-		goto error;
-	}
-
-	switch (crypto_cmd) {
-	case ZFS_IOC_KEY_LOAD_KEY:
-		ret = nvlist_lookup_nvlist(innvl, ZPOOL_HIDDEN_ARGS,
-		    &hidden_args);
-		if (ret) {
-			ret = SET_ERROR(EINVAL);
-			goto error;
-		}
-
-		ret = dsl_crypto_params_create_nvlist(NULL, hidden_args, &dcp);
-		if (ret)
-			goto error;
-
-		ret = spa_keystore_load_wkey(dsname, dcp);
-		if (ret)
-			goto error;
-
-		break;
-	case ZFS_IOC_KEY_UNLOAD_KEY:
-		ret = spa_keystore_unload_wkey(dsname);
-		if (ret)
-			goto error;
-
-		break;
-	case ZFS_IOC_KEY_REWRAP:
-		ret = nvlist_lookup_nvlist(innvl, "args", &args);
-		if (ret) {
-			ret = SET_ERROR(EINVAL);
-			goto error;
-		}
-
-		ret = nvlist_lookup_nvlist(innvl, ZPOOL_HIDDEN_ARGS,
-		    &hidden_args);
-		if (ret) {
-			ret = SET_ERROR(EINVAL);
-			goto error;
-		}
-
-		ret = dsl_crypto_params_create_nvlist(args, hidden_args, &dcp);
-		if (ret)
-			goto error;
-
-		ret = spa_keystore_rewrap(dsname, dcp);
-		if (ret)
-			goto error;
-
-		break;
-	default:
+	ret = nvlist_lookup_nvlist(innvl, ZPOOL_HIDDEN_ARGS, &hidden_args);
+	if (ret != 0) {
 		ret = SET_ERROR(EINVAL);
 		goto error;
 	}
+
+	ret = dsl_crypto_params_create_nvlist(NULL, hidden_args, &dcp);
+	if (ret != 0)
+		goto error;
+
+	ret = spa_keystore_load_wkey(dsname, dcp, noop);
+	if (ret != 0)
+		goto error;
+
+	dsl_crypto_params_free(dcp, B_FALSE);
+
+	return (0);
+
+error:
+	dsl_crypto_params_free(dcp, B_TRUE);
+	return (ret);
+}
+
+/*
+ * Unload a user's wrapping key from the kernel.
+ * Both innvl and outnvl are unused.
+ */
+/* ARGSUSED */
+static int
+zfs_ioc_unload_key(const char *dsname, nvlist_t *innvl, nvlist_t *outnvl)
+{
+	int ret;
+
+	if (strchr(dsname, '@') != NULL || strchr(dsname, '%') != NULL) {
+		ret = (SET_ERROR(EINVAL));
+		goto error;
+	}
+
+	ret = spa_keystore_unload_wkey(dsname);
+	if (ret != 0)
+		goto error;
+
+	return (0);
+
+error:
+	return (ret);
+}
+
+/*
+ * Changes a user's wrapping key used to decrypt a dataset. The keyformat,
+ * keylocation, pbkdf2salt, and  pbkdf2iters properties can also be specified
+ * here to change how the key is derived in userspace.
+ *
+ * innvl: {
+ *    "hidden_args" (optional) -> { "wkeydata" -> value }
+ *    "props" (optional) -> { prop -> value }
+ * }
+ *
+ * outnvl is unused
+ */
+/* ARGSUSED */
+static int
+zfs_ioc_change_key(const char *dsname, nvlist_t *innvl, nvlist_t *outnvl)
+{
+	int ret;
+	dsl_crypto_params_t *dcp = NULL;
+	nvlist_t *args = NULL, *hidden_args = NULL;
+
+	if (strchr(dsname, '@') != NULL || strchr(dsname, '%') != NULL) {
+		ret = (SET_ERROR(EINVAL));
+		goto error;
+	}
+
+	(void) nvlist_lookup_nvlist(innvl, "props", &args);
+	(void) nvlist_lookup_nvlist(innvl, ZPOOL_HIDDEN_ARGS, &hidden_args);
+
+	ret = dsl_crypto_params_create_nvlist(args, hidden_args, &dcp);
+	if (ret != 0)
+		goto error;
+
+	ret = spa_keystore_rewrap(dsname, dcp);
+	if (ret != 0)
+		goto error;
 
 	dsl_crypto_params_free(dcp, B_FALSE);
 
@@ -5882,9 +5898,16 @@ zfs_ioctl_init(void)
 	    POOL_NAME,
 	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_TRUE, B_TRUE);
 
-	zfs_ioctl_register("crypto", ZFS_IOC_KEY,
-	    zfs_ioc_key, zfs_secpolicy_key,
+	zfs_ioctl_register("load-key", ZFS_IOC_LOAD_KEY,
+	    zfs_ioc_load_key, zfs_secpolicy_load_key,
 	    DATASET_NAME, POOL_CHECK_SUSPENDED, B_TRUE, B_TRUE);
+	zfs_ioctl_register("unload-key", ZFS_IOC_UNLOAD_KEY,
+	    zfs_ioc_unload_key, zfs_secpolicy_load_key,
+	    DATASET_NAME, POOL_CHECK_SUSPENDED, B_TRUE, B_TRUE);
+	zfs_ioctl_register("change-key", ZFS_IOC_CHANGE_KEY,
+	    zfs_ioc_change_key, zfs_secpolicy_change_key,
+	    DATASET_NAME, POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY,
+	    B_TRUE, B_TRUE);
 
 	/* IOCTLS that use the legacy function signature */
 

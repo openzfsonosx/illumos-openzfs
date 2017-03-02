@@ -48,7 +48,7 @@ struct dsl_dataset;
 
 #define	DD_FIELD_FILESYSTEM_COUNT	"com.joyent:filesystem_count"
 #define	DD_FIELD_SNAPSHOT_COUNT		"com.joyent:snapshot_count"
-#define	DD_FIELD_CRYPTO_KEY_OBJ		"com.datto:dsl_crypto_obj"
+#define	DD_FIELD_CRYPTO_KEY_OBJ		"com.datto:crypto_key_obj"
 
 typedef enum dd_used {
 	DD_USED_HEAD,

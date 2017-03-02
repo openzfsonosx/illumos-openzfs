@@ -1614,7 +1614,7 @@ open_objset(const char *path, dmu_objset_type_t type, void *tag, objset_t **osp)
 		if (err != 0) {
 			(void) fprintf(stderr, "sa_setup failed: %s\n",
 			    strerror(err));
-			dmu_objset_disown(*osp, tag);
+			dmu_objset_disown(*osp, B_FALSE, tag);
 			*osp = NULL;
 		}
 	}
@@ -1629,7 +1629,7 @@ close_objset(objset_t *os, void *tag)
 	VERIFY3P(os, ==, sa_os);
 	if (os->os_sa != NULL)
 		sa_tear_down(os);
-	dmu_objset_disown(os, tag);
+	dmu_objset_disown(os, B_FALSE, tag);
 	sa_attr_table = NULL;
 	sa_os = NULL;
 }
@@ -1873,7 +1873,7 @@ dump_object(objset_t *os, uint64_t object, int verbosity, int *print_header)
 		/*
 		 * Encrypted datasets will have sensitive bonus buffers
 		 * encrypted. Therefore we cannot hold the bonus buffer and
-		 * must get the dnode itself instead.
+		 * must hold the dnode itself instead.
 		 */
 		error = dmu_object_info(os, object, &doi);
 		if (error)
@@ -1945,7 +1945,13 @@ dump_object(objset_t *os, uint64_t object, int verbosity, int *print_header)
 			(void) printf("\t\t(bonus encrypted)\n");
 		}
 
-		object_viewer[ZDB_OT_TYPE(doi.doi_type)](os, object, NULL, 0);
+		if (!os->os_encrypted || !DMU_OT_IS_ENCRYPTED(doi.doi_type)) {
+			object_viewer[ZDB_OT_TYPE(doi.doi_type)](os, object,
+			    NULL, 0);
+		} else {
+			(void) printf("\t\t(object encrypted)\n");
+		}
+
 		*print_header = 1;
 	}
 
@@ -2292,7 +2298,7 @@ dump_path(char *ds, char *path)
 	if (err != 0) {
 		(void) fprintf(stderr, "can't lookup root znode: %s\n",
 		    strerror(err));
-		dmu_objset_disown(os, FTAG);
+		dmu_objset_disown(os, B_FALSE, FTAG);
 		return (EINVAL);
 	}
 

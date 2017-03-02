@@ -458,13 +458,15 @@ extern nvlist_t *zfs_get_clones_nvl(zfs_handle_t *);
 /*
  * zfs encryption management
  */
+extern int zfs_crypto_is_encryption_root(zfs_handle_t *, boolean_t *);
 extern int zfs_crypto_create(libzfs_handle_t *, char *, nvlist_t *, nvlist_t *,
     nvlist_t **);
 extern int zfs_crypto_clone(libzfs_handle_t *, zfs_handle_t *, char *,
     nvlist_t *, nvlist_t **);
-extern int zfs_crypto_load_key(zfs_handle_t *);
+extern int zfs_crypto_attempt_load_keys(libzfs_handle_t *, char *);
+extern int zfs_crypto_load_key(zfs_handle_t *, boolean_t, char *);
 extern int zfs_crypto_unload_key(zfs_handle_t *);
-extern int zfs_crypto_rewrap(zfs_handle_t *, nvlist_t *);
+extern int zfs_crypto_rewrap(zfs_handle_t *, nvlist_t *, boolean_t);
 
 typedef struct zprop_list {
 	int		pl_prop;
@@ -698,6 +700,7 @@ extern const char *zfs_type_to_name(zfs_type_t);
 extern void zfs_refresh_properties(zfs_handle_t *);
 extern int zfs_name_valid(const char *, zfs_type_t);
 extern zfs_handle_t *zfs_path_to_zhandle(libzfs_handle_t *, char *, zfs_type_t);
+extern int zfs_parent_name(zfs_handle_t *, char *, size_t);
 extern boolean_t zfs_dataset_exists(libzfs_handle_t *, const char *,
     zfs_type_t);
 extern int zfs_spa_version(zfs_handle_t *, int *);
@@ -779,8 +782,7 @@ int zfs_smb_acl_rename(libzfs_handle_t *, char *, char *, char *, char *);
  * Enable and disable datasets within a pool by mounting/unmounting and
  * sharing/unsharing them.
  */
-extern int zpool_enable_datasets(zpool_handle_t *, const char *, int,
-    boolean_t);
+extern int zpool_enable_datasets(zpool_handle_t *, const char *, int);
 extern int zpool_disable_datasets(zpool_handle_t *, boolean_t);
 
 /*

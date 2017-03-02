@@ -284,6 +284,6 @@ zpool_feature_init(void)
 	zfeature_register(SPA_FEATURE_ENCRYPTION,
 	    "com.datto:encryption", "encryption",
 	    "Support for dataset level encryption",
-	    0, encryption_deps);
+	    ZFEATURE_FLAG_PER_DATASET, encryption_deps);
 	}
 }

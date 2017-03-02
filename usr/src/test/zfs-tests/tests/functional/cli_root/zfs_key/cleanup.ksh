@@ -26,7 +26,7 @@
 #
 
 #
-# Copyright (c) 2016, Datto, Inc. All rights reserved.
+# Copyright (c) 2017, Datto, Inc. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib

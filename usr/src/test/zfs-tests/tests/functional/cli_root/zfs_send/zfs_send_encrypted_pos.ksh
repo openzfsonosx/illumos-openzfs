@@ -26,7 +26,7 @@
 #
 
 #
-# Copyright (c) 2016, Datto, Inc. All rights reserved.
+# Copyright (c) 2017, Datto, Inc. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -59,8 +59,7 @@ typeset passphrase="abcdefgh"
 typeset snap="$TESTPOOL/$cryptds@snap"
 
 log_must eval "$ECHO $passphrase | \
-	$ZFS create -o encryption=on -o keysource=passphrase,prompt \
-	$TESTPOOL/$cryptds"
+	$ZFS create -o encryption=on -o keyformat=passphrase $TESTPOOL/$cryptds"
 log_must $ZFS snapshot $snap
 log_must eval "$ZFS send $snap > /dev/null"
 

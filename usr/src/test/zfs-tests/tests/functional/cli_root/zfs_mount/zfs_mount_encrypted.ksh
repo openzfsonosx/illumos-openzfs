@@ -26,14 +26,14 @@
 #
 
 #
-# Copyright (c) 2016, Datto, Inc. All rights reserved.
+# Copyright (c) 2017, Datto, Inc. All rights reserved.
 #
 
 . $STF_SUITE/tests/functional/cli_root/zfs_key/zfs_key_common.kshlib
 
 #
 # DESCRIPTION:
-# 'zfs mount' should accept a valid key as it mounts the filesystem.
+# 'zfs mount -l' should accept a valid key as it mounts the filesystem.
 #
 # STRATEGY:
 # 1. Create an encrypted dataset
@@ -55,16 +55,16 @@ function cleanup
 
 log_onexit cleanup
 
-log_assert "'zfs mount' should properly load a valid wrapping key"
+log_assert "'zfs mount -l' should properly load a valid wrapping key"
 
 log_must eval 'echo $PASSKEY | $ZFS create -o encryption=on \
-	-o keysource=passphrase,prompt $TESTPOOL/$CRYPTDS'
+	-o keyformat=passphrase $TESTPOOL/$CRYPTDS'
 
 log_must $ZFS unmount $TESTPOOL/$CRYPTDS
-log_must $ZFS key -u $TESTPOOL/$CRYPTDS
+log_must $ZFS unload-key $TESTPOOL/$CRYPTDS
 
-log_must eval '$ECHO $PKEY | $ZFS mount $TESTPOOL/$CRYPTDS'
+log_must eval '$ECHO $PKEY | $ZFS mount -l $TESTPOOL/$CRYPTDS'
 mounted $TESTPOOL/$CRYPTDS || \
 	log_fail Filesystem $TESTPOOL/$TESTFS is unmounted
 
-log_pass "'zfs mount' properly loads a valid wrapping key"
+log_pass "'zfs mount -l' properly loads a valid wrapping key"

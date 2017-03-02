@@ -555,9 +555,8 @@ ddt_ditto_copies_needed(ddt_t *ddt, ddt_entry_t *dde, ddt_phys_t *ddp_willref)
 	copies_needed = MAX(desired_copies, total_copies) - total_copies;
 
 	/* encrypted blocks store their IV in DVA[2] */
-	if (DDK_GET_ENCRYPTED(&dde->dde_key) &&
-	    copies_needed >= SPA_DVAS_PER_BP)
-		copies_needed = SPA_DVAS_PER_BP - 1;
+	if (DDK_GET_ENCRYPTED(&dde->dde_key))
+		copies_needed = MIN(copies_needed, SPA_DVAS_PER_BP - 1);
 
 	return (copies_needed);
 }

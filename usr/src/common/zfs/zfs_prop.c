@@ -128,6 +128,14 @@ zfs_prop_init(void)
 		{ NULL }
 	};
 
+	static zprop_index_t keyformat_table[] = {
+		{ "none",		ZFS_KEYFORMAT_NONE },
+		{ "raw",		ZFS_KEYFORMAT_RAW },
+		{ "hex",		ZFS_KEYFORMAT_HEX },
+		{ "passphrase",		ZFS_KEYFORMAT_PASSPHRASE },
+		{ NULL }
+	};
+
 	static zprop_index_t snapdir_table[] = {
 		{ "hidden",	ZFS_SNAPDIR_HIDDEN },
 		{ "visible",	ZFS_SNAPDIR_VISIBLE },
@@ -260,11 +268,6 @@ zfs_prop_init(void)
 	    ZFS_TYPE_FILESYSTEM | ZFS_TYPE_VOLUME,
 	    "on | off | lzjb | gzip | gzip-[1-9] | zle | lz4",
 	    "COMPRESS", compress_table);
-	zprop_register_index(ZFS_PROP_ENCRYPTION, "encryption",
-	    ZIO_CRYPT_DEFAULT, PROP_ONETIME, ZFS_TYPE_DATASET,
-	    "on | off | aes-128-ccm | aes-192-ccm | aes-256-ccm | "
-	    "aes-128-gcm | aes-192-gcm | aes-256-gcm", "ENCRYPTION",
-	    crypto_table);
 	zprop_register_index(ZFS_PROP_SNAPDIR, "snapdir", ZFS_SNAPDIR_HIDDEN,
 	    PROP_INHERIT, ZFS_TYPE_FILESYSTEM,
 	    "hidden | visible", "SNAPDIR", snapdir_table);
@@ -346,6 +349,14 @@ zfs_prop_init(void)
 	    ZFS_CASE_SENSITIVE, PROP_ONETIME, ZFS_TYPE_FILESYSTEM |
 	    ZFS_TYPE_SNAPSHOT,
 	    "sensitive | insensitive | mixed", "CASE", case_table);
+	zprop_register_index(ZFS_PROP_KEYFORMAT, "keyformat",
+	    ZFS_KEYFORMAT_NONE, PROP_ONETIME, ZFS_TYPE_DATASET,
+	    "none | raw | hex | passphrase", "KEYFORMAT", keyformat_table);
+	zprop_register_index(ZFS_PROP_ENCRYPTION, "encryption",
+	    ZIO_CRYPT_DEFAULT, PROP_ONETIME, ZFS_TYPE_DATASET,
+	    "on | off | aes-128-ccm | aes-192-ccm | aes-256-ccm | "
+	    "aes-128-gcm | aes-192-gcm | aes-256-gcm", "ENCRYPTION",
+	    crypto_table);
 
 	/* set once index (boolean) properties */
 	zprop_register_index(ZFS_PROP_UTF8ONLY, "utf8only", 0, PROP_ONETIME,
@@ -376,9 +387,9 @@ zfs_prop_init(void)
 	    "receive_resume_token",
 	    NULL, PROP_READONLY, ZFS_TYPE_FILESYSTEM | ZFS_TYPE_VOLUME,
 	    "<string token>", "RESUMETOK");
-	zprop_register_string(ZFS_PROP_KEYSOURCE, "keysource",
-	    "none", PROP_ONETIME, ZFS_TYPE_DATASET,
-	    "<prompt | file>,<passphrase | raw>", "KEYSOURCE");
+	zprop_register_string(ZFS_PROP_KEYLOCATION, "keylocation",
+	    "none", PROP_INHERIT, ZFS_TYPE_DATASET, "prompt | <file URI>",
+	    "KEYLOCATION");
 
 	/* readonly number properties */
 	zprop_register_number(ZFS_PROP_USED, "used", 0, PROP_READONLY,
@@ -475,7 +486,7 @@ zfs_prop_init(void)
 	    PROP_TYPE_NUMBER, PROP_READONLY, ZFS_TYPE_DATASET, "INCONSISTENT");
 	zprop_register_hidden(ZFS_PROP_PREV_SNAP, "prevsnap", PROP_TYPE_STRING,
 	    PROP_READONLY, ZFS_TYPE_FILESYSTEM | ZFS_TYPE_VOLUME, "PREVSNAP");
-	zprop_register_hidden(ZFS_PROP_SALT, "salt",
+	zprop_register_hidden(ZFS_PROP_PBKDF2_SALT, "pbkdf2salt",
 	    PROP_TYPE_NUMBER, PROP_READONLY, ZFS_TYPE_DATASET, "SALT");
 
 	/* oddball properties */
@@ -660,6 +671,40 @@ zfs_prop_inheritable(zfs_prop_t prop)
 	return (zfs_prop_table[prop].pd_attr == PROP_INHERIT ||
 	    zfs_prop_table[prop].pd_attr == PROP_ONETIME);
 }
+
+/*
+ * Returns TRUE if property is one of the encryption properties that requires
+ * a loaded encryption key to modify.
+ */
+boolean_t
+zfs_prop_encryption_key_param(zfs_prop_t prop)
+{
+	/*
+	 * keylocation does not count as an encryption property. It can be
+	 * changed at will without needing the master keys.
+	 */
+	return (prop == ZFS_PROP_PBKDF2_SALT || prop == ZFS_PROP_PBKDF2_ITERS ||
+	    prop == ZFS_PROP_KEYFORMAT);
+}
+
+/*
+ * Helper function used by both kernelspace and userspace to check the
+ * keylocation property. If encrypted is set, the keylocation must be valid
+ * for an encrypted dataset.
+ */
+boolean_t
+zfs_prop_valid_keylocation(const char *str, boolean_t encrypted)
+{
+	if (strcmp("none", str) == 0)
+		return (!encrypted);
+	else if (strcmp("prompt", str) == 0)
+		return (B_TRUE);
+	else if (strlen(str) > 8 && strncmp("file:///", str, 8) == 0)
+		return (B_TRUE);
+
+	return (B_FALSE);
+}
+
 
 #ifndef _KERNEL
 

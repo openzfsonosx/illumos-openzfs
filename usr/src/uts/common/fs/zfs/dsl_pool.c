@@ -398,7 +398,7 @@ dsl_pool_create(spa_t *spa, nvlist_t *zplprops, dsl_crypto_params_t *dcp,
 	if (spa_version(spa) >= SPA_VERSION_FEATURES)
 		spa_feature_create_zap_objects(spa, tx);
 
-	if (dcp && dcp->cp_crypt != ZIO_CRYPT_OFF &&
+	if (dcp != NULL && dcp->cp_crypt != ZIO_CRYPT_OFF &&
 	    dcp->cp_crypt != ZIO_CRYPT_INHERIT)
 		spa_feature_enable(spa, SPA_FEATURE_ENCRYPTION, tx);
 
