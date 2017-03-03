@@ -25,10 +25,6 @@
 # Use is subject to license terms.
 #
 
-#
-# Copyright (c) 2017, Datto, Inc. All rights reserved.
-#
-
 . $STF_SUITE/include/libtest.shlib
 
 default_cleanup

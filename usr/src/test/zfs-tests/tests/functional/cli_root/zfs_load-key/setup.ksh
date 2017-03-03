@@ -25,37 +25,8 @@
 # Use is subject to license terms.
 #
 
-#
-# Copyright (c) 2017, Datto, Inc. All rights reserved.
-#
+. $STF_SUITE/include/libtest.shlib
 
-. $STF_SUITE/tests/functional/cli_root/zfs_key/zfs_key_common.kshlib
+DISK=${DISKS%% *}
 
-#
-# DESCRIPTION:
-# 'zfs unload-key' will unload a key from the ZFS keystore.
-#
-# STRATEGY:
-# 1. Create an encrypted dataset
-# 2. Unmount the dataset
-# 3. Unload the key
-# 4. Verify the key is unloaded
-#
-
-verify_runnable "both"
-
-function cleanup
-{
-	destroy_default_encrypted_dataset
-}
-
-log_onexit cleanup
-
-log_assert "'zfs unload-key' should properly unload a wrapping key"
-
-create_default_encrypted_dataset
-log_must $ZFS unmount $TESTPOOL/$CRYPTDS
-log_must $ZFS unload-key $TESTPOOL/$CRYPTDS
-check_key_unavailable $TESTPOOL/$CRYPTDS
-
-log_pass "'zfs unload-key' properly unloads a wrapping key"
+default_setup $DISK

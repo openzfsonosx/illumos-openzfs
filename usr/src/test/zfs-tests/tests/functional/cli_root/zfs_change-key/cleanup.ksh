@@ -25,12 +25,6 @@
 # Use is subject to license terms.
 #
 
-#
-# Copyright (c) 2017, Datto, Inc. All rights reserved.
-#
+. $STF_SUITE/include/libtest.shlib
 
-export PKEY="abcdefgh"
-export BAD_PKEY="abcdefgz"
-export SHORT_PKEY="abcd"
-export HKEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-export CRYPTDS="crypt"
+default_cleanup

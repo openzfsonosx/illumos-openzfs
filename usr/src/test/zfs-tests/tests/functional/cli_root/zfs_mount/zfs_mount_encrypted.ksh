@@ -29,7 +29,7 @@
 # Copyright (c) 2017, Datto, Inc. All rights reserved.
 #
 
-. $STF_SUITE/tests/functional/cli_root/zfs_key/zfs_key_common.kshlib
+. $STF_SUITE/include/libtest.shlib
 
 #
 # DESCRIPTION:
@@ -63,8 +63,8 @@ log_must eval 'echo $PASSKEY | $ZFS create -o encryption=on \
 log_must $ZFS unmount $TESTPOOL/$CRYPTDS
 log_must $ZFS unload-key $TESTPOOL/$CRYPTDS
 
-log_must eval '$ECHO $PKEY | $ZFS mount -l $TESTPOOL/$CRYPTDS'
+log_must eval '$ECHO $PASSKEY | $ZFS mount -l $TESTPOOL/$CRYPTDS'
 mounted $TESTPOOL/$CRYPTDS || \
-	log_fail Filesystem $TESTPOOL/$TESTFS is unmounted
+	log_fail "Filesystem $TESTPOOL/$TESTFS is unmounted"
 
 log_pass "'zfs mount -l' properly loads a valid wrapping key"

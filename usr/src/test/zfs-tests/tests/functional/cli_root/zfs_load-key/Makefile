@@ -16,6 +16,6 @@
 include $(SRC)/Makefile.master
 
 ROOTOPTPKG = $(ROOT)/opt/zfs-tests
-TARGETDIR = $(ROOTOPTPKG)/tests/functional/cli_root/zfs_key
+TARGETDIR = $(ROOTOPTPKG)/tests/functional/cli_root/zfs_load-key
 
 include $(SRC)/test/zfs-tests/Makefile.com

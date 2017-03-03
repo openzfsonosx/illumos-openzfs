@@ -2,27 +2,16 @@
 #
 # CDDL HEADER START
 #
-# The contents of this file are subject to the terms of the
-# Common Development and Distribution License (the "License").
-# You may not use this file except in compliance with the License.
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
 #
-# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
-# See the License for the specific language governing permissions
-# and limitations under the License.
-#
-# When distributing Covered Code, include this CDDL HEADER in each
-# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
-# If applicable, add the following below this CDDL HEADER, with the
-# fields enclosed by brackets "[]" replaced with your own identifying
-# information: Portions Copyright [yyyy] [name of copyright owner]
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
 #
 # CDDL HEADER END
-#
-
-#
-# Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
-# Use is subject to license terms.
 #
 
 #
@@ -32,90 +21,114 @@
 . $STF_SUITE/include/libtest.shlib
 . $STF_SUITE/tests/functional/cli_root/zfs_create/zfs_create_common.kshlib
 . $STF_SUITE/tests/functional/cli_root/zfs_create/properties.kshlib
+. $STF_SUITE/tests/functional/cli_root/zfs_load-key/zfs_load-key_common.kshlib
 
 #
 # DESCRIPTION:
-# 'zfs create' should be able to create an encrypted dataset with
-# a valid encryption algorithm, keyformat, keylocation, and key.
+# ZFS should create datasets only if they have a valid combination of
+# encryption properties set.
+#
+# penc	= parent encrypted
+# enc	= encryption
+# loc	= keylocation provided
+# fmt	= keyformat provided
+#
+# penc	enc	fmt	loc	valid	notes
+# -------------------------------------------
+# no	unspec	0	0	yes	inherit no encryption (not tested here)
+# no	unspec	0	1	no	no crypt specified
+# no	unspec	1	0	no	no crypt specified
+# no	unspec	1	1	no	no crypt specified
+# no	off	0	0	yes	explicit no encryption
+# no	off	0	1	no	keylocation given, but crypt off
+# no	off	1	0	no	keyformat given, but crypt off
+# no	off	1	1	no	keyformat given, but crypt off
+# no	on	0	0	no	no keyformat specified for new key
+# no	on	0	1	no	no keyformat specified for new key
+# no	on	1	0	yes	new encryption root
+# no	on	1	1	yes	new encryption root
+# yes	unspec	0	0	yes	inherit encryption
+# yes	unspec	0	1	no	no keyformat specified
+# yes	unspec	1	0	yes	new encryption root, crypt inherited
+# yes	unspec	1	1	yes	new encryption root, crypt inherited
+# yes	off	0	0	no	unencrypted child of encrypted parent
+# yes	off	0	1	no	unencrypted child of encrypted parent
+# yes	off	1	0	no	unencrypted child of encrypted parent
+# yes	off	1	1	no	unencrypted child of encrypted parent
+# yes	on	0	0	yes	inherited encryption, local crypt
+# yes	on	0	1	no	no keyformat specified for new key
+# yes	on	1	0	yes	new encryption root
+# yes	on	1	1	yes	new encryption root
 #
 # STRATEGY:
-# 1. Create a filesystem for each encryption type
-# 2. Create a filesystem for each keyformat type
-# 3. Verify that each filesystem has the correct properties set
+# 1. Attempt to create a dataset using all combinations of encryption
+#    properties
 #
 
 verify_runnable "both"
 
 function cleanup
 {
+	datasetexists $TESTPOOL/$TESTFS && \
+		log_must $ZFS destroy -r $TESTPOOL/$TESTFS
 	datasetexists $TESTPOOL/$TESTFS1 && \
-		log_must $ZFS destroy -f $TESTPOOL/$TESTFS1
+		log_must $ZFS destroy -r $TESTPOOL/$TESTFS1
 }
-
 log_onexit cleanup
 
-set -A ENCRYPTION_ALGS "encryption=on" \
-	"encryption=aes-128-ccm" \
-	"encryption=aes-192-ccm" \
-	"encryption=aes-256-ccm" \
-	"encryption=aes-128-gcm" \
-	"encryption=aes-192-gcm" \
-	"encryption=aes-256-gcm"
+log_assert "ZFS should create datasets only if they have a valid" \
+	"combination of encryption properties set."
 
-set -A ENCRYPTION_PROPS "encryption=aes-256-ccm" \
-	"encryption=aes-128-ccm" \
-	"encryption=aes-192-ccm" \
-	"encryption=aes-256-ccm" \
-	"encryption=aes-128-gcm" \
-	"encryption=aes-192-gcm" \
-	"encryption=aes-256-gcm"
+# Unencrypted parent
+log_must $ZFS create $TESTPOOL/$TESTFS
+log_mustnot $ZFS create -o keyformat=passphrase $TESTPOOL/$TESTFS/c1
+log_mustnot $ZFS create -o keylocation=prompt $TESTPOOL/$TESTFS/c1
+log_mustnot $ZFS create -o keyformat=passphrase -o keylocation=prompt \
+	$TESTPOOL/$TESTFS/c1
 
-set -A KEYFORMATS "keyformat=raw" \
-	"keyformat=hex" \
-	"keyformat=passphrase"
+log_must $ZFS create -o encryption=off $TESTPOOL/$TESTFS/c1
+log_mustnot $ZFS create -o encryption=off -o keylocation=prompt \
+	$TESTPOOL/$TESTFS/c2
+log_mustnot $ZFS create -o encryption=off -o keyformat=passphrase \
+	$TESTPOOL/$TESTFS/c2
+log_mustnot $ZFS create -o encryption=off -o keyformat=passphrase \
+	-o keylocation=prompt $TESTPOOL/$TESTFS/c2
 
-set -A USER_KEYS "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" \
-	"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
-	"abcdefgh"
+log_mustnot $ZFS create -o encryption=on $TESTPOOL/$TESTFS/c2
+log_mustnot $ZFS create -o encryption=on -o keylocation=prompt \
+	$TESTPOOL/$TESTFS/c2
+log_must eval "$ECHO $PASSPHRASE | $ZFS create -o encryption=on" \
+	"-o keyformat=passphrase $TESTPOOL/$TESTFS/c3"
+log_must eval "$ECHO $PASSPHRASE | $ZFS create -o encryption=on" \
+	"-o keyformat=passphrase -o keylocation=prompt $TESTPOOL/$TESTFS/c4"
 
-log_assert "'zfs create' should properly create encrypted datasets"
+# Encrypted parent
+log_must eval "$ECHO $PASSPHRASE | $ZFS create -o encryption=on" \
+	"-o keyformat=passphrase $TESTPOOL/$TESTFS1"
 
-# typeset -i i=0
-# while (( $i < ${#ENCRYPTION_ALGS[*]} )); do
-	# log_must eval 'echo ${USER_KEYS[0]} | \
-		# $ZFS create -o ${ENCRYPTION_ALGS[$i]} -o ${KEYFORMATS[0]} \
-		# $TESTPOOL/$TESTFS1'
+log_must $ZFS create $TESTPOOL/$TESTFS1/c1
+log_mustnot $ZFS create -o keylocation=prompt $TESTPOOL/$TESTFS1/c2
+log_must eval "$ECHO $PASSPHRASE | $ZFS create -o keyformat=passphrase" \
+	"$TESTPOOL/$TESTFS1/c3"
+log_must eval "$ECHO $PASSPHRASE | $ZFS create -o keyformat=passphrase" \
+	"-o keylocation=prompt $TESTPOOL/$TESTFS1/c4"
 
-	# datasetexists $TESTPOOL/$TESTFS1 || \
-		# log_fail "zfs create -o ${ENCRYPTION_ALGS[$i]} \
-		# -o ${KEYFORMATS[0]} $TESTPOOL/$TESTFS1 fail."
+log_mustnot $ZFS create -o encryption=off $TESTPOOL/$TESTFS1/c5
+log_mustnot $ZFS create -o encryption=off -o keylocation=prompt \
+	$TESTPOOL/$TESTFS1/c5
+log_mustnot $ZFS create -o encryption=off -o keyformat=passphrase \
+	$TESTPOOL/$TESTFS1/c5
+log_mustnot $ZFS create -o encryption=off -o keyformat=passphrase \
+	-o keylocation=prompt $TESTPOOL/$TESTFS1/c5
 
-	# propertycheck $TESTPOOL/$TESTFS1 ${ENCRYPTION_PROPS[i]} || \
-		# log_fail "failed to set ${ENCRYPTION_ALGS[i]}."
-	# propertycheck $TESTPOOL/$TESTFS1 ${KEYFORMATS[0]} || \
-		# log_fail "failed to set ${KEYFORMATS[0]}."
+log_must eval "$ECHO $PASSPHRASE | $ZFS create -o encryption=on" \
+	"$TESTPOOL/$TESTFS1/c5"
+log_mustnot $ZFS create -o encryption=on -o keylocation=prompt \
+	$TESTPOOL/$TESTFS1/c6
+log_must eval "$ECHO $PASSPHRASE | $ZFS create -o encryption=on" \
+	"-o keyformat=passphrase $TESTPOOL/$TESTFS1/c6"
+log_must eval "$ECHO $PASSPHRASE | $ZFS create -o encryption=on" \
+	"-o keyformat=passphrase -o keylocation=prompt $TESTPOOL/$TESTFS1/c7"
 
-	# log_must $ZFS destroy -f $TESTPOOL/$TESTFS1
-	# (( i = i + 1 ))
-# done
-
-# typeset -i j=0
-# while (( $j < ${#KEYFORMATS[*]} )); do
-	# log_must eval 'echo ${USER_KEYS[$j]} | \
-		# $ZFS create -o ${ENCRYPTION_ALGS[0]} -o ${KEYFORMATS[$j]} \
-		# $TESTPOOL/$TESTFS1'
-
-	# datasetexists $TESTPOOL/$TESTFS1 || \
-		# log_fail "zfs create -o ${ENCRYPTION_ALGS[0]} \
-		# -o ${KEYFORMATS[$j]} $TESTPOOL/$TESTFS1 fail."
-
-	# propertycheck $TESTPOOL/$TESTFS1 ${ENCRYPTION_PROPS[0]} || \
-		# log_fail "failed to set ${ENCRYPTION_ALGS[0]}."
-	# propertycheck $TESTPOOL/$TESTFS1 ${KEYFORMATS[j]} || \
-		# log_fail "failed to set ${KEYFORMATS[j]}."
-
-	# log_must $ZFS destroy -f $TESTPOOL/$TESTFS1
-	# (( j = j + 1 ))
-# done
-
-log_pass "'zfs create' properly creates encrypted datasets"
+log_pass "ZFS creates datasets only if they have a valid combination of" \
+	"encryption properties set."

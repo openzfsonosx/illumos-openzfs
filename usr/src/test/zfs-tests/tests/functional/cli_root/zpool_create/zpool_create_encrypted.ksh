@@ -2,27 +2,16 @@
 #
 # CDDL HEADER START
 #
-# The contents of this file are subject to the terms of the
-# Common Development and Distribution License (the "License").
-# You may not use this file except in compliance with the License.
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
 #
-# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
-# See the License for the specific language governing permissions
-# and limitations under the License.
-#
-# When distributing Covered Code, include this CDDL HEADER in each
-# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
-# If applicable, add the following below this CDDL HEADER, with the
-# fields enclosed by brackets "[]" replaced with your own identifying
-# information: Portions Copyright [yyyy] [name of copyright owner]
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
 #
 # CDDL HEADER END
-#
-
-#
-# Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
-# Use is subject to license terms.
 #
 
 #
@@ -30,15 +19,39 @@
 #
 
 . $STF_SUITE/include/libtest.shlib
-. $STF_SUITE/tests/functional/cli_root/zfs_create/zfs_create_common.kshlib
+#. $STF_SUITE/tests/functional/cli_root/zfs_create/zfs_create_common.kshlib
+. $STF_SUITE/tests/functional/cli_root/zfs_load-key/zfs_load-key_common.kshlib
 
 #
 # DESCRIPTION:
-# Create an encrypted pool
+# 'zpool create' should create an encrypted dataset only if it has a valid
+# combination of encryption properties set.
+#
+# enc	= encryption
+# loc	= keylocation provided
+# fmt	= keyformat provided
+#
+# U = unspecified
+# N = off
+# Y = on
+#
+# enc	fmt	loc	valid	notes
+# -------------------------------------------
+# U	0	1	no	no crypt specified
+# U	1	0	no	no crypt specified
+# U	1	1	no	no crypt specified
+# N	0	0	yes	explicit no encryption
+# N	0	1	no	keylocation given, but crypt off
+# N	1	0	no	keyformat given, but crypt off
+# N	1	1	no	keyformat given, but crypt off
+# Y	0	0	no	no keyformat specified for new key
+# Y	0	1	no	no keyformat specified for new key
+# Y	1	0	yes	new encryption root
+# Y	1	1	yes	new encryption root
 #
 # STRATEGY:
-# 1. Create a pool for each encryption type and verify that it is properly set
-# 2. Create a pool for each keyformat type and verify that it is properly set
+# 1. Attempt to create a dataset using all combinations of encryption
+#    properties
 #
 
 verify_runnable "global"
@@ -47,65 +60,30 @@ function cleanup
 {
 	poolexists $TESTPOOL && destroy_pool $TESTPOOL
 }
-
 log_onexit cleanup
 
-set -A ENCRYPTION_ALGS "encryption=on" \
-	"encryption=aes-128-ccm" \
-	"encryption=aes-192-ccm" \
-	"encryption=aes-256-ccm" \
-	"encryption=aes-128-gcm" \
-	"encryption=aes-192-gcm" \
-	"encryption=aes-256-gcm"
+log_assert "'zpool create' should create an encrypted dataset only if it" \
+	"has a valid combination of encryption properties set."
 
-set -A ENCRYPTION_PROPS "encryption=aes-256-ccm" \
-	"encryption=aes-128-ccm" \
-	"encryption=aes-192-ccm" \
-	"encryption=aes-256-ccm" \
-	"encryption=aes-128-gcm" \
-	"encryption=aes-192-gcm" \
-	"encryption=aes-256-gcm"
+log_mustnot $ZPOOL create -O keylocation=prompt $TESTPOOL $DISKS
+log_mustnot $ZPOOL create -O keyformat=passphrase $TESTPOOL $DISKS
+log_mustnot $ZPOOL create -O keyformat=passphrase -O keylocation=prompt $TESTPOOL $DISKS
 
-set -A KEYFORMATS "keyformat=raw" \
-	"keyformat=hex" \
-	"keyformat=passphrase"
+log_must $ZPOOL create -O encryption=off $TESTPOOL $DISKS
+log_must $ZPOOL destroy $TESTPOOL
 
-set -A USER_KEYS "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" \
-	"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
-	"abcdefgh"
+log_mustnot $ZPOOL create -O encryption=off -O keylocation=prompt $TESTPOOL $DISKS
+log_mustnot $ZPOOL create -O encryption=off -O keyformat=passphrase $TESTPOOL $DISKS
+log_mustnot $ZPOOL create -O encryption=off -O keyformat=passphrase -O keylocation=prompt $TESTPOOL $DISKS
 
-log_assert "'zpool create' can create encrypted pools"
+log_mustnot $ZPOOL create -O encryption=on $TESTPOOL $DISKS
+log_mustnot $ZPOOL create -O encryption=on -O keylocation=prompt $TESTPOOL $DISKS
 
-typeset -i i=0
-while (( i < ${#ENCRYPTION_ALGS[*]} )); do
-	log_must eval "$ECHO ${USER_KEYS[0]} | $ZPOOL create \
-		-O ${ENCRYPTION_ALGS[i]} -O ${KEYFORMATS[0]} \
-                $TESTPOOL $DISKS"
+log_must eval "$ECHO $PASSPHRASE | $ZPOOL create -O encryption=on -O keyformat=passphrase $TESTPOOL $DISKS"
+log_must $ZPOOL destroy $TESTPOOL
 
-	propertycheck $TESTPOOL ${ENCRYPTION_PROPS[i]} || \
-		log_fail "${ENCRYPTION_ALGS[i]} is failed to set."
+log_must eval "$ECHO $PASSPHRASE | $ZPOOL create -O encryption=on -O keyformat=passphrase -O keylocation=prompt $TESTPOOL $DISKS"
+log_must $ZPOOL destroy $TESTPOOL
 
-	propertycheck $TESTPOOL ${KEYFORMATS[0]} || \
-		log_fail "${KEYFORMATS[0]} is failed to set."
-
-	log_must $ZPOOL destroy $TESTPOOL
-	(( i = i + 1 ))
-done
-
-typeset -i j=0
-while (( j < ${#KEYFORMATS[*]} )); do
-	log_must eval "$ECHO ${USER_KEYS[j]} | $ZPOOL create \
-		-O ${ENCRYPTION_ALGS[0]} -O ${KEYFORMATS[j]} \
-                $TESTPOOL $DISKS"
-
-	propertycheck $TESTPOOL ${ENCRYPTION_PROPS[0]} || \
-		log_fail "${ENCRYPTION_ALGS[0]} is failed to set."
-
-	propertycheck $TESTPOOL ${KEYFORMATS[j]} || \
-		log_fail "${KEYFORMATS[j]} is failed to set."
-
-	log_must $ZPOOL destroy $TESTPOOL
-	(( j = j + 1 ))
-done
-
-log_pass "Creating encrypted pools works as expected."
+log_pass "'zpool create' creates an encrypted dataset only if it has a" \
+	"valid combination of encryption properties set."
