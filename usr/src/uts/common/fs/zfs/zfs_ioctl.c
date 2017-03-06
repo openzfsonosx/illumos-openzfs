@@ -1269,6 +1269,7 @@ zfs_secpolicy_release(zfs_cmd_t *zc, nvlist_t *innvl, cred_t *cr)
 	return (0);
 }
 
+/* ARGSUSED */
 static int
 zfs_secpolicy_load_key(zfs_cmd_t *zc, nvlist_t *innvl, cred_t *cr)
 {
@@ -1276,6 +1277,7 @@ zfs_secpolicy_load_key(zfs_cmd_t *zc, nvlist_t *innvl, cred_t *cr)
 	    ZFS_DELEG_PERM_LOAD_KEY, cr));
 }
 
+/* ARGSUSED */
 static int
 zfs_secpolicy_change_key(zfs_cmd_t *zc, nvlist_t *innvl, cred_t *cr)
 {

@@ -1416,7 +1416,7 @@ hdr_full_crypt_dest(void *vbuf, void *unused)
 {
 	arc_buf_hdr_t *hdr = vbuf;
 
-	hdr_full_dest(vbuf, unused);
+	hdr_full_dest(hdr, unused);
 	arc_space_return(sizeof (hdr->b_crypt_hdr), ARC_SPACE_HDRS);
 }
 
@@ -2026,6 +2026,7 @@ arc_hdr_decrypt(arc_buf_hdr_t *hdr, kmutex_t *hash_lock, spa_t *spa)
 // FIXME - unknown
 //		hdr_copy(hdr->b_l1hdr.b_pdata, hdr->b_crypt_hdr.b_rdata,
 //		    HDR_GET_PSIZE(hdr));
+		ret = ret; // Avoid lint error for E_NOP_IF_STMT
 	} else if (ret != 0) {
 		goto error;
 	}
@@ -4995,6 +4996,7 @@ arc_bcopy_func(zio_t *zio, int error, arc_buf_t *buf, void *arg)
 }
 
 /* a generic arc_read_done_func_t */
+/* ARGSUSED */
 void
 arc_getbuf_func(zio_t *zio, int error, arc_buf_t *buf, void *arg)
 {
@@ -5067,8 +5069,6 @@ arc_read_done(zio_t *zio)
 		    hdr->b_crypt_hdr.b_iv);
 
 		if (BP_GET_TYPE(bp) == DMU_OT_INTENT_LOG) {
-			void *tmpbuf;
-
 			zio_crypt_decode_mac_zil(zio->io_data,
 			    hdr->b_crypt_hdr.b_mac);
 		} else {

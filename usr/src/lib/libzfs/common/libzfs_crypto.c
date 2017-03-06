@@ -170,12 +170,12 @@ get_key_material_raw(FILE *fd, const char *fsname, zfs_keyformat_t keyformat,
 			(void) printf("%s %s%s for '%s': ",
 			    (again) ? "Re-enter" : "Enter",
 			    (newkey) ? "new " : "",
-			    get_format_prompt_string(keyformat), fsname);
+			    get_format_prompt_string((key_format_t)keyformat), fsname);
 		} else {
 			(void) printf("%s %s%s: ",
 			    (again) ? "Re-enter" : "Enter",
 			    (newkey) ? "new " : "",
-			    get_format_prompt_string(keyformat));
+			    get_format_prompt_string((key_format_t)keyformat));
 
 		}
 		(void) fflush(stdout);
@@ -636,7 +636,7 @@ populate_create_encryption_params_nvlists(libzfs_handle_t *hdl,
 	}
 
 	/* derive a key from the key material */
-	ret = derive_key(hdl, keyformat, iters, key_material, key_material_len,
+	ret = derive_key(hdl, (key_format_t)keyformat, iters, key_material, key_material_len,
 	    salt, &key_data);
 	if (ret != 0)
 		goto error;

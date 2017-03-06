@@ -371,7 +371,7 @@ typedef enum {
 typedef enum zfs_keystatus {
 	ZFS_KEYSTATUS_NONE = 0,
 	ZFS_KEYSTATUS_UNAVAILABLE,
-	ZFS_KEYSTATUS_AVAILABLE,
+	ZFS_KEYSTATUS_AVAILABLE
 } zfs_keystatus_t;
 
 typedef enum zfs_keyformat {

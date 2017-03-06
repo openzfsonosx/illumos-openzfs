@@ -7211,6 +7211,7 @@ zfs_do_change_key(int argc, char **argv)
 	}
 
 	ret = zfs_crypto_rewrap(zhp, props, inheritkey);
+	if (ret != 0)
 		goto error;
 
 	nvlist_free(props);

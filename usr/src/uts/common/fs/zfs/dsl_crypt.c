@@ -1424,7 +1424,7 @@ spa_keystore_rewrap_sync(void *arg, dmu_tx_t *tx)
 	}
 
 	if (skra->skra_cp != NULL) {
-		avl_find(&spa->spa_keystore.sk_wkeys, wkey, &where);
+		(void) avl_find(&spa->spa_keystore.sk_wkeys, wkey, &where);
 		avl_insert(&spa->spa_keystore.sk_wkeys, wkey, where);
 	} else {
 		dsl_wrapping_key_rele(wkey, FTAG);

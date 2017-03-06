@@ -545,6 +545,7 @@ dmu_objset_hold(const char *name, void *tag, objset_t **osp)
 	return (err);
 }
 
+/* ARGSUSED */
 static int
 dmu_objset_own_impl(dsl_dataset_t *ds, dmu_objset_type_t type,
     boolean_t readonly, void *tag, objset_t **osp)

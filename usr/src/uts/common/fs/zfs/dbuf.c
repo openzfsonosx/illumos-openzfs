@@ -897,6 +897,7 @@ dbuf_whichblock(dnode_t *dn, int64_t level, uint64_t offset)
 	}
 }
 
+/* ARGSUSED */
 static void
 dbuf_read_done(zio_t *zio, int err, arc_buf_t *buf, void *vdb)
 {
