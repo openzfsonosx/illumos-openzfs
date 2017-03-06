@@ -254,7 +254,7 @@ dsl_crypto_params_create_nvlist(nvlist_t *props, nvlist_t *crypto_args,
 	}
 
 	/*
-	 * remove the encryption property from the nvlist since it is not
+	 * Remove the encryption property from the nvlist since it is not
 	 * maintained through the DSL.
 	 */
 	(void) nvlist_remove_all(props, zfs_prop_to_name(ZFS_PROP_ENCRYPTION));
@@ -372,7 +372,7 @@ dsl_dir_hold_keylocation_source_dd(dsl_dir_t *dd, void *tag,
 	char setpoint[MAXNAMELEN];
 
 	/*
-	 * lookup dd's keylocation property and find out where it was
+	 * Lookup dd's keylocation property and find out where it was
 	 * inherited from. dsl_prop_get_dd() might not find anything and
 	 * return the default value. We detect this by check9ing if setpoint
 	 * is an empty string and return ENOENT.
@@ -721,15 +721,6 @@ spa_keystore_dsl_key_hold_dd(spa_t *spa, dsl_dir_t *dd, void *tag,
 	dsl_wrapping_key_t *wkey = NULL;
 	uint64_t dckobj = dd->dd_crypto_obj;
 
-	/*
-	 * we need a write lock here because we might load a dsl key
-	 * from disk if we don't have it in the keystore already.
-	 * This could be a problem because this lock also allows the zio
-	 * layer to access the keys, but this function should only be
-	 * called during key loading, encrypted dataset mounting, encrypted
-	 * dataset creation, etc. so this is probably ok. If it becomes a
-	 * problem an RCU-like implementation could make sense here.
-	 */
 	rw_enter(&spa->spa_keystore.sk_dk_lock, RW_WRITER);
 
 	/* lookup the key in the tree of currently loaded keys */
@@ -1196,7 +1187,7 @@ spa_keystore_rewrap_check(void *arg, dmu_tx_t *tx)
 
 	/* check for the encryption feature */
 	if (!spa_feature_is_enabled(dp->dp_spa, SPA_FEATURE_ENCRYPTION)) {
-		ret = (SET_ERROR(ENOTSUP));
+		ret = SET_ERROR(ENOTSUP);
 		goto error;
 	}
 
@@ -1595,8 +1586,7 @@ dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_dir_t *origindd,
 	if (dcp->cp_wkey == NULL) {
 		/* key must be fully unspecified */
 		if (dcp->cp_keyformat != ZFS_KEYFORMAT_NONE ||
-		    (dcp->cp_keylocation != NULL &&
-		    strcmp(dcp->cp_keylocation, "none") == 0))
+		    dcp->cp_keylocation != NULL)
 			return (SET_ERROR(EINVAL));
 
 		/* parent must have a key to inherit */
@@ -1625,16 +1615,22 @@ dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_dir_t *origindd,
 
 	/* Must have fully specified keyformat */
 	switch (dcp->cp_keyformat) {
-		case ZFS_KEYFORMAT_NONE:
-			/* keyformat must be specified */
-			return (SET_ERROR(EINVAL));
+		case ZFS_KEYFORMAT_HEX:
+		case ZFS_KEYFORMAT_RAW:
+		   /* requires no pbkdf2 iters and salt */
+		   if (dcp->cp_salt != 0 || dcp->cp_iters != 0)
+			   return (SET_ERROR(EINVAL));
+		   break;
 		case ZFS_KEYFORMAT_PASSPHRASE:
 			/* requires pbkdf2 iters and salt */
 			if (dcp->cp_salt == 0 ||
 			    dcp->cp_iters < MIN_PBKDF2_ITERATIONS)
 				return (SET_ERROR(EINVAL));
-		default:
 			break;
+		case ZFS_KEYFORMAT_NONE:
+		default:
+			/* keyformat must be specified and valid */
+			return (SET_ERROR(EINVAL));
 	}
 
 	/* check for origin key if this is a clone */

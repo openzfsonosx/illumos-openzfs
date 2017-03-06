@@ -560,7 +560,7 @@ populate_create_encryption_params_nvlists(libzfs_handle_t *hdl,
     char *keylocation, nvlist_t *props, uint8_t **wkeydata, uint_t *wkeylen)
 {
 	int ret;
-	uint64_t iters, salt = 0;
+	uint64_t iters = 0, salt = 0;
 	uint8_t *key_material = NULL;
 	size_t key_material_len = 0;
 	uint8_t *key_data = NULL;
@@ -620,6 +620,17 @@ populate_create_encryption_params_nvlists(libzfs_handle_t *hdl,
 		} else if (ret != 0) {
 			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
 			    "Failed to get pbkdf2 iterations."));
+			goto error;
+		}
+	} else {
+		/* check that pbkdf2iters was not specified by the user */
+		ret = nvlist_lookup_uint64(props,
+		    zfs_prop_to_name(ZFS_PROP_PBKDF2_ITERS), &iters);
+		if (ret == 0) {
+			ret = EINVAL;
+			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+			    "Cannot specify pbkdf2iters with a non-passphrase "
+			    "keyformat."));
 			goto error;
 		}
 	}
@@ -830,15 +841,22 @@ zfs_crypto_create(libzfs_handle_t *hdl, char *parent_name, nvlist_t *props,
 
 	/*
 	 * Specifying a keylocation implies this will be a new encryption root.
-	 * Check that a keyformat is also specified. These must be provided
-	 * together.
+	 * Check that a keyformat is also specified.
 	 */
-	if ((keyformat == ZFS_KEYFORMAT_NONE) != (keylocation == NULL)) {
+	if (keylocation != NULL && keyformat == ZFS_KEYFORMAT_NONE) {
 		ret = EINVAL;
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-		    "Keyformat and keylocation are both required for a new "
-		    "encryption root."));
+		    "Keyformat required for new encryption root."));
 		goto out;
+	}
+
+	/* default to prompt if no keylocation is specified */
+	if (keyformat != ZFS_KEYFORMAT_NONE && keylocation == NULL) {
+		keylocation = "prompt";
+		ret = nvlist_add_string(props,
+		    zfs_prop_to_name(ZFS_PROP_KEYLOCATION), keylocation);
+		if (ret != 0)
+			goto out;
 	}
 
 	/*
@@ -944,19 +962,26 @@ zfs_crypto_clone(libzfs_handle_t *hdl, zfs_handle_t *origin_zhp,
 
 	/*
 	 * Specifying a keylocation implies this will be a new encryption root.
-	 * Check that a keyformat is also specified. These must be provided
-	 * together.
+	 * Check that a keyformat is also specified.
 	 */
-	if ((keyformat == ZFS_KEYFORMAT_NONE) != (keylocation == NULL)) {
+	if (keylocation != NULL && keyformat == ZFS_KEYFORMAT_NONE) {
 		ret = EINVAL;
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-		    "Keyformat and keylocation are both required for a new "
-		    "encryption root."));
+		    "Keyformat required for new encryption root."));
 		goto out;
 	}
 
+	/* default to prompt if no keylocation is specified */
+	if (keyformat != ZFS_KEYFORMAT_NONE && keylocation == NULL) {
+		keylocation = "prompt";
+		ret = nvlist_add_string(props,
+		    zfs_prop_to_name(ZFS_PROP_KEYLOCATION), keylocation);
+		if (ret != 0)
+			goto out;
+	}
+
 	/*
-	 * by this point this dataset will be encrypted. The origin's
+	 * By this point this dataset will be encrypted. The origin's
 	 * wrapping key must be loaded
 	 */
 	okey_status = zfs_prop_get_int(origin_zhp, ZFS_PROP_KEYSTATUS);
