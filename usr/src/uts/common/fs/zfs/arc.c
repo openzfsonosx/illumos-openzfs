@@ -2023,10 +2023,8 @@ arc_hdr_decrypt(arc_buf_hdr_t *hdr, kmutex_t *hash_lock, spa_t *spa)
 	    HDR_GET_PSIZE(hdr), hdr->b_l1hdr.b_pdata,
 	    hdr->b_crypt_hdr.b_rdata);
 	if (ret == ZIO_NO_ENCRYPTION_NEEDED) {
-// FIXME - unknown
-//		hdr_copy(hdr->b_l1hdr.b_pdata, hdr->b_crypt_hdr.b_rdata,
-//		    HDR_GET_PSIZE(hdr));
-		ret = ret; // Avoid lint error for E_NOP_IF_STMT
+		bcopy(hdr->b_crypt_hdr.b_rdata, hdr->b_l1hdr.b_pdata, 
+			HDR_GET_PSIZE(hdr));
 	} else if (ret != 0) {
 		goto error;
 	}
@@ -3469,7 +3467,7 @@ arc_alloc_compressed_buf(spa_t *spa, void *tag, uint64_t psize, uint64_t lsize,
 	ASSERT(!MUTEX_HELD(HDR_LOCK(hdr)));
 
 	arc_buf_t *buf = NULL;
-	VERIFY0(arc_buf_alloc_impl(hdr, spa, tag, B_TRUE, B_FALSE,
+	VERIFY0(arc_buf_alloc_impl(hdr, spa, tag, B_FALSE, B_TRUE,
 	    B_FALSE, &buf));
 	arc_buf_thaw(buf);
 	ASSERT3P(hdr->b_l1hdr.b_freeze_cksum, ==, NULL);
@@ -5957,31 +5955,34 @@ arc_write_ready(zio_t *zio)
 		ASSERT(ARC_BUF_COMPRESSED(buf));
 		arc_hdr_alloc_data(hdr, B_TRUE);
 		bcopy(zio->io_data, hdr->b_crypt_hdr.b_rdata, psize);
-	} else if (arc_hdr_get_compress(hdr) != ZIO_COMPRESS_OFF &&
-	    !ARC_BUF_COMPRESSED(buf)) {
-		ASSERT3U(BP_GET_COMPRESS(zio->io_bp), !=, ZIO_COMPRESS_OFF);
-		ASSERT3U(psize, >, 0);
-
-		if (!HDR_ENCRYPTED(hdr)) {
+	} else if (!arc_can_share(hdr, buf)) {
+		/*
+		 * Ideally, we would always copy the io_abd into b_pabd, but the
+		 * user may have disabled compressed ARC, thus we must check the
+		 * hdr's compression setting rather than the io_bp's.
+		 */
+		if (HDR_ENCRYPTED(hdr)) {
+			ASSERT3U(psize, >, 0);
+			arc_hdr_alloc_data(hdr, B_TRUE);
+			bcopy(zio->io_data, hdr->b_l1hdr.b_pdata, psize);
+		} else if (arc_hdr_get_compress(hdr) != ZIO_COMPRESS_OFF &&
+		    !ARC_BUF_COMPRESSED(buf)) {
+			ASSERT3U(psize, >, 0);
 			arc_hdr_alloc_data(hdr, B_FALSE);
 			bcopy(zio->io_data, hdr->b_l1hdr.b_pdata, psize);
 		} else {
-			arc_hdr_alloc_data(hdr, B_TRUE);
-			bcopy(zio->io_data, hdr->b_crypt_hdr.b_rdata, psize);
+			ASSERT3U(zio->io_orig_size, ==, arc_hdr_size(hdr));
+			arc_hdr_alloc_data(hdr, B_FALSE);
+			bcopy(buf->b_data, hdr->b_l1hdr.b_pdata, arc_buf_size(buf));
 		}
 	} else {
 		ASSERT3P(buf->b_data, ==, zio->io_orig_data);
 		ASSERT3U(zio->io_orig_size, ==, arc_buf_size(buf));
 		ASSERT3U(hdr->b_l1hdr.b_bufcnt, ==, 1);
-
-		/*
-		 * This hdr is not compressed so we're able to share
-		 * the arc_buf_t data buffer with the hdr.
-		 */
+		
 		arc_share_buf(hdr, buf);
-		ASSERT0(bcmp(zio->io_orig_data, hdr->b_l1hdr.b_pdata,
-		    HDR_GET_LSIZE(hdr)));
 	}
+
 	arc_hdr_verify(hdr, zio->io_bp);
 }
 

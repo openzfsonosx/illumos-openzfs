@@ -361,7 +361,7 @@ zio_decrypt(zio_t *zio, void *data, uint64_t size)
 	    bp->blk_birth, size, data, zio->io_data, iv, mac, salt);
 	if (ret == ZIO_NO_ENCRYPTION_NEEDED) {
 		ASSERT3U(BP_GET_TYPE(bp), ==, DMU_OT_INTENT_LOG);
-//		abd_copy(data, zio->io_abd, size);
+		bcopy(zio->io_data, data, size);
 	} else if (ret != 0) {
 		/* assert that the key was found unless this was speculative */
 		ASSERT(ret != ENOENT || (zio->io_flags & ZIO_FLAG_SPECULATIVE));
