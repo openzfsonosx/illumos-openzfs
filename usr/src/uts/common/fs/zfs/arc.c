@@ -3397,6 +3397,7 @@ arc_hdr_realloc_crypt(arc_buf_hdr_t *hdr, boolean_t encrypt)
 	nhdr->b_l1hdr.b_arc_access = hdr->b_l1hdr.b_arc_access;
 	nhdr->b_l1hdr.b_acb = hdr->b_l1hdr.b_acb;
 	nhdr->b_l1hdr.b_pdata = hdr->b_l1hdr.b_pdata;
+	nhdr->b_l1hdr.b_buf = hdr->b_l1hdr.b_buf;
 #ifdef ZFS_DEBUG
 	if (hdr->b_l1hdr.b_thawed != NULL) {
 		nhdr->b_l1hdr.b_thawed = hdr->b_l1hdr.b_thawed;
@@ -5964,7 +5965,7 @@ arc_write_ready(zio_t *zio)
 		if (HDR_ENCRYPTED(hdr)) {
 			ASSERT3U(psize, >, 0);
 			arc_hdr_alloc_data(hdr, B_TRUE);
-			bcopy(zio->io_data, hdr->b_l1hdr.b_pdata, psize);
+			bcopy(zio->io_data, hdr->b_crypt_hdr.b_rdata, psize);
 		} else if (arc_hdr_get_compress(hdr) != ZIO_COMPRESS_OFF &&
 		    !ARC_BUF_COMPRESSED(buf)) {
 			ASSERT3U(psize, >, 0);
