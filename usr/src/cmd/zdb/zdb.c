@@ -3986,8 +3986,7 @@ main(int argc, char **argv)
 				}
 			}
 		} else {
-			error = dmu_objset_own(target, DMU_OST_ANY,
-			    B_TRUE, B_FALSE, FTAG, &os);
+			error = open_objset(target, DMU_OST_ANY, FTAG, &os);
 		}
 	}
 	nvlist_free(policy);
