@@ -17,7 +17,7 @@ tests = ['zfs_change-key', 'zfs_change-key_format',
 tests = ['zfs_clone_encrypted']
 
 [/opt/zfs-tests/tests/functional/cli_root/zfs_create]
-tests = ['zfs_create_encrypted']
+tests = ['zfs_create_crypt_combos', 'zfs_create_encrypted']
 
 [/opt/zfs-tests/tests/functional/cli_root/zfs_load-key]
 tests = ['zfs_load-key', 'zfs_load-key_all','zfs_load-key_file',
@@ -39,7 +39,7 @@ tests = ['zfs_send_encrypted_pos', 'zfs_send_encrypted_neg']
 tests = ['zfs_unload-key', 'zfs_unload-key_all', 'zfs_unload-key_recursive']
 
 [/opt/zfs-tests/tests/functional/cli_root/zpool_create]
-tests = ['zpool_create_encrypted']
+tests = ['zpool_create_crypt_combos', 'zpool_create_encrypted']
 
 [/opt/zfs-tests/tests/functional/cli_root/zpool_import]
 tests = ['zpool_import_encrypted', 'zpool_import_encrypted_load']

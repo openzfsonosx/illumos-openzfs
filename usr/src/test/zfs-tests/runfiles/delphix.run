@@ -119,7 +119,8 @@ tests = ['zfs_create_001_pos', 'zfs_create_002_pos', 'zfs_create_003_pos',
     'zfs_create_004_pos', 'zfs_create_005_pos', 'zfs_create_006_pos',
     'zfs_create_007_pos', 'zfs_create_008_neg', 'zfs_create_009_neg',
     'zfs_create_010_neg', 'zfs_create_011_pos', 'zfs_create_012_pos',
-    'zfs_create_013_pos', 'zfs_create_014_pos', 'zfs_create_encrypted']
+    'zfs_create_013_pos', 'zfs_create_014_pos', 'zfs_create_crypt_combos',
+    'zfs_create_encrypted']
 
 [/opt/zfs-tests/tests/functional/cli_root/zfs_destroy]
 tests = ['zfs_destroy_001_pos', 'zfs_destroy_002_pos', 'zfs_destroy_003_pos',
@@ -252,7 +253,7 @@ tests = ['zpool_create_001_pos', 'zpool_create_002_pos',
     'zpool_create_024_pos',
     'zpool_create_features_001_pos', 'zpool_create_features_002_pos',
     'zpool_create_features_003_pos', 'zpool_create_features_004_neg',
-    'zpool_create_encrypted']
+    'zpool_create_crypt_combos', 'zpool_create_encrypted']
 
 [/opt/zfs-tests/tests/functional/cli_root/zpool_destroy]
 tests = ['zpool_destroy_001_pos', 'zpool_destroy_002_pos',
