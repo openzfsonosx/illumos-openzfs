@@ -177,6 +177,7 @@ file path=opt/zfs-tests/include/default.cfg mode=0444
 file path=opt/zfs-tests/include/libtest.shlib mode=0444
 file path=opt/zfs-tests/include/math.shlib mode=0444
 file path=opt/zfs-tests/include/properties.shlib mode=0444
+file path=opt/zfs-tests/runfiles/crypto.run mode=0444
 file path=opt/zfs-tests/runfiles/delphix.run mode=0444
 file path=opt/zfs-tests/runfiles/omnios.run mode=0444
 file path=opt/zfs-tests/runfiles/openindiana.run mode=0444
@@ -671,6 +672,8 @@ file \
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zfs_load-key/zfs_load-key_recursive \
     mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_load-key/zol_compat.cfg \
+    mode=0444
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_mount/cleanup mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_mount/setup mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_mount/zfs_mount.cfg \
