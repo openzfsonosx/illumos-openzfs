@@ -19,6 +19,7 @@
 #
 
 . $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/tests/functional/cli_root/zfs_load-key/zol_compat.cfg
 . $STF_SUITE/tests/functional/cli_root/zfs_load-key/zfs_load-key.cfg
 
 # Return 0 is a dataset key is available, 1 otherwise

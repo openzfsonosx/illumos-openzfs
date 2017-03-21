@@ -1,0 +1,45 @@
+[DEFAULT]
+pre = setup
+quiet = False
+pre_user = root
+user = root
+timeout = 1800
+post_user = root
+post = cleanup
+outputdir = /var/tmp/test_results
+
+[/opt/zfs-tests/tests/functional/cli_root/zfs_change-key]
+tests = ['zfs_change-key', 'zfs_change-key_format',
+    'zfs_change-key_inherit', 'zfs_change-key_load',
+    'zfs_change-key_location', 'zfs_change-key_pbkdf2iters']
+
+[/opt/zfs-tests/tests/functional/cli_root/zfs_clone]
+tests = ['zfs_clone_encrypted']
+
+[/opt/zfs-tests/tests/functional/cli_root/zfs_create]
+tests = ['zfs_create_encrypted']
+
+[/opt/zfs-tests/tests/functional/cli_root/zfs_load-key]
+tests = ['zfs_load-key', 'zfs_load-key_all','zfs_load-key_file',
+    'zfs_load-key_location', 'zfs_load-key_noop', 'zfs_load-key_recursive']
+
+[/opt/zfs-tests/tests/functional/cli_root/zfs_mount]
+tests = ['zfs_mount_encrypted']
+
+[/opt/zfs-tests/tests/functional/cli_root/zfs_receive]
+tests = ['zfs_receive_encrypted_pos', 'zfs_receive_encrypted_neg']
+
+[/opt/zfs-tests/tests/functional/cli_root/zfs_rename]
+tests = ['zfs_rename_encrypted_child', 'zfs_rename_to_encrypted']
+
+[/opt/zfs-tests/tests/functional/cli_root/zfs_send]
+tests = ['zfs_send_encrypted_pos', 'zfs_send_encrypted_neg']
+
+[/opt/zfs-tests/tests/functional/cli_root/zfs_unload-key]
+tests = ['zfs_unload-key', 'zfs_unload-key_all', 'zfs_unload-key_recursive']
+
+[/opt/zfs-tests/tests/functional/cli_root/zpool_create]
+tests = ['zpool_create_encrypted']
+
+[/opt/zfs-tests/tests/functional/cli_root/zpool_import]
+tests = ['zpool_import_encrypted', 'zpool_import_encrypted_load']
