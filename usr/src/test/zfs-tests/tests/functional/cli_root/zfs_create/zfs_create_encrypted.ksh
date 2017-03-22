@@ -79,6 +79,9 @@ log_onexit cleanup
 log_assert "ZFS should create datasets only if they have a valid" \
 	"combination of encryption properties set."
 
+# Otherwise this test fails with "dataset already exists"
+cleanup
+
 # Unencrypted parent
 log_must $ZFS create $TESTPOOL/$TESTFS
 log_mustnot $ZFS create -o keyformat=passphrase $TESTPOOL/$TESTFS/c1
