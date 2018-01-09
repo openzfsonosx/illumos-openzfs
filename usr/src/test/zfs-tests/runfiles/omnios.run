@@ -287,7 +287,7 @@ tests = ['zpool_import_001_pos', 'zpool_import_002_pos',
     'zpool_import_features_003_pos', 'zpool_import_missing_001_pos',
     'zpool_import_missing_002_pos', 'zpool_import_missing_003_pos',
     'zpool_import_rename_001_pos', 'zpool_import_encrypted',
-	'zpool_import_encrypted_load']
+	'zpool_import_encrypted_load', 'zpool_import_errata3']
 
 [/opt/zfs-tests/tests/functional/cli_root/zpool_labelclear]
 tests = ['zpool_labelclear_active', 'zpool_labelclear_exported']
@@ -507,7 +507,7 @@ tests = ['rsend_001_pos', 'rsend_002_pos', 'rsend_003_pos', 'rsend_004_pos',
     'send-c_lz4_disabled', 'send-c_recv_lz4_disabled',
     'send-c_mixed_compression', 'send-c_stream_size_estimate', 'send-cD',
     'send-c_embedded_blocks', 'send-c_resume', 'send-cpL_varied_recsize',
-    'send-c_recv_dedup', 'send_encrypted_heirarchy']
+    'send-c_recv_dedup', 'send_encrypted_heirarchy', 'send_encrypted_files']
 
 [/opt/zfs-tests/tests/functional/scrub_mirror]
 tests = ['scrub_mirror_001_pos', 'scrub_mirror_002_pos',

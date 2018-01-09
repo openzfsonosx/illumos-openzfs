@@ -901,7 +901,12 @@ zvol_open(dev_t *devp, int flag, int otyp, cred_t *cr)
 		mutex_exit(&zfsdev_state_lock);
 		return (err);
 	}
-	if ((flag & FWRITE) && (zv->zv_flags & ZVOL_RDONLY)) {
+	/*
+	 * Check for a bad on-disk format version now since we
+	 * lied about owning the dataset readonly before.
+	 */
+	if ((flag & FWRITE) && ((zv->zv_flags & ZVOL_RDONLY) ||
+	    dmu_objset_incompatible_encryption_version(zv->zv_objset))) {
 		err = SET_ERROR(EROFS);
 		goto out;
 	}

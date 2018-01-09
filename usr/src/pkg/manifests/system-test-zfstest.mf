@@ -1572,6 +1572,8 @@ file \
     mode=0444
 file path=opt/zfs-tests/tests/functional/cli_root/zpool_import/cleanup \
     mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zpool_import/cryptv0.dat.bz2 \
+    mode=0444
 file path=opt/zfs-tests/tests/functional/cli_root/zpool_import/setup mode=0555
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zpool_import/zpool_import.cfg \
@@ -1623,6 +1625,9 @@ file \
     mode=0555
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zpool_import/zpool_import_encrypted_load \
+    mode=0555
+file \
+    path=opt/zfs-tests/tests/functional/cli_root/zpool_import/zpool_import_errata3 \
     mode=0555
 file \
     path=opt/zfs-tests/tests/functional/cli_root/zpool_import/zpool_import_features_001_pos \
@@ -2442,6 +2447,7 @@ file path=opt/zfs-tests/tests/functional/rsend/send-c_volume mode=0555
 file path=opt/zfs-tests/tests/functional/rsend/send-c_zstreamdump mode=0555
 file path=opt/zfs-tests/tests/functional/rsend/send-cpL_varied_recsize \
     mode=0555
+file path=opt/zfs-tests/tests/functional/rsend/send_encrypted_files mode=0555
 file path=opt/zfs-tests/tests/functional/rsend/send_encrypted_heirarchy \
     mode=0555
 file path=opt/zfs-tests/tests/functional/rsend/setup mode=0555
