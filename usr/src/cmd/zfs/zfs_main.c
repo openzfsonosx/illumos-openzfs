@@ -3869,6 +3869,9 @@ zfs_do_send(int argc, char **argv)
 		return (1);
 	}
 
+	/* Always enable siginfo from 'zfs' command */
+	flags.siginfo = B_TRUE;
+
 	if (resume_token != NULL) {
 		return (zfs_send_resume(g_zfs, &flags, STDOUT_FILENO,
 		    resume_token));

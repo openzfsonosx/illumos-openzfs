@@ -635,6 +635,9 @@ typedef struct sendflags {
 
 	/* compressed WRITE records are permitted */
 	boolean_t compress;
+
+	/* signal handling for SIGINFO are permitted */
+	boolean_t siginfo;
 } sendflags_t;
 
 typedef boolean_t (snapfilter_cb_t)(zfs_handle_t *, void *);
