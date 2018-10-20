@@ -234,6 +234,7 @@ refcount_transfer(refcount_t *dst, refcount_t *src)
 	list_destroy(&removed);
 }
 
+/* ARGSUSED */
 void
 refcount_transfer_ownership_many(refcount_t *rc, uint64_t number,
     void *current_holder, void *new_holder)
@@ -264,8 +265,8 @@ void
 refcount_transfer_ownership(refcount_t *rc, void *current_holder,
     void *new_holder)
 {
-	return (refcount_transfer_ownership_many(rc, 1, current_holder,
-	    new_holder));
+	refcount_transfer_ownership_many(rc, 1, current_holder,
+	    new_holder);
 }
 
 /*

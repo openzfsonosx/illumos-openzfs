@@ -953,7 +953,8 @@ file \
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_program/cleanup \
     mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_program/setup mode=0555
-file path=opt/zfs-tests/tests/functional/cli_root/zfs_program/zfs_program_json     mode=0555
+file path=opt/zfs-tests/tests/functional/cli_root/zfs_program/zfs_program_json \
+    mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_promote/cleanup \
     mode=0555
 file path=opt/zfs-tests/tests/functional/cli_root/zfs_promote/setup mode=0555
