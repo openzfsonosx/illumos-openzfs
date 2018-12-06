@@ -3673,7 +3673,6 @@ arc_hdr_realloc_crypt(arc_buf_hdr_t *hdr, boolean_t need_crypt)
 	arc_buf_hdr_t *nhdr;
 	arc_buf_t *buf;
 	kmem_cache_t *ncache, *ocache;
-	unsigned nsize, osize;
 
 	ASSERT(HDR_HAS_L1HDR(hdr));
 	ASSERT3U(!!HDR_PROTECTED(hdr), !=, need_crypt);
@@ -3684,14 +3683,10 @@ arc_hdr_realloc_crypt(arc_buf_hdr_t *hdr, boolean_t need_crypt)
 
 	if (need_crypt) {
 		ncache = hdr_full_crypt_cache;
-		nsize = sizeof (hdr->b_crypt_hdr);
 		ocache = hdr_full_cache;
-		osize = HDR_FULL_SIZE;
 	} else {
 		ncache = hdr_full_cache;
-		nsize = HDR_FULL_SIZE;
 		ocache = hdr_full_crypt_cache;
-		osize = sizeof (hdr->b_crypt_hdr);
 	}
 
 	nhdr = kmem_cache_alloc(ncache, KM_PUSHPAGE);
