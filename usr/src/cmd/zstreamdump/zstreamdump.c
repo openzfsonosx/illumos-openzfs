@@ -668,26 +668,36 @@ main(int argc, char *argv[])
 			(void) ssread(buf,
 			    P2ROUNDUP(drrwe->drr_psize, 8), &zc);
 			break;
-			case DRR_OBJECT_RANGE:
-				if (do_byteswap) {
-					drror->drr_firstobj =
-					    BSWAP_64(drror->drr_firstobj);
-					drror->drr_numslots =
-					    BSWAP_64(drror->drr_numslots);
-					drror->drr_toguid = BSWAP_64(drror->drr_toguid);
-				}
-				if (verbose) {
-					(void) printf("OBJECT_RANGE firstobj = %llu "
-					    "numslots = %llu flags = %u "
-					    "salt = %s iv = %s mac = %s\n",
-					    (u_longlong_t)drror->drr_firstobj,
-					    (u_longlong_t)drror->drr_numslots,
-					    drror->drr_flags,
-					    salt,
-					    iv,
-					    mac);
-				}
-				break;
+		case DRR_OBJECT_RANGE:
+			if (do_byteswap) {
+				drror->drr_firstobj =
+				    BSWAP_64(drror->drr_firstobj);
+				drror->drr_numslots =
+				    BSWAP_64(drror->drr_numslots);
+				drror->drr_toguid = BSWAP_64(drror->drr_toguid);
+			}
+			if (verbose) {
+				sprintf_bytes(salt, drror->drr_salt,
+				    ZIO_DATA_SALT_LEN);
+				sprintf_bytes(iv, drror->drr_iv,
+				    ZIO_DATA_IV_LEN);
+				sprintf_bytes(mac, drror->drr_mac,
+				    ZIO_DATA_MAC_LEN);
+
+				(void) printf("OBJECT_RANGE firstobj = %llu "
+				    "numslots = %llu flags = %u "
+				    "salt = %s iv = %s mac = %s\n",
+				    (u_longlong_t)drror->drr_firstobj,
+				    (u_longlong_t)drror->drr_numslots,
+				    drror->drr_flags,
+				    salt,
+				    iv,
+				    mac);
+			}
+			break;
+		case DRR_NUMTYPES:
+			/* should never be reached */
+			exit(1);
 		}
 		if (drr->drr_type != DRR_BEGIN && very_verbose) {
 			(void) printf("    checksum = %llx/%llx/%llx/%llx\n",
