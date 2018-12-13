@@ -30,7 +30,7 @@
 .\" Copyright 2018 Joyent, Inc.
 .\" Copyright (c) 2018 Datto Inc.
 .\"
-.Dd Feb 10, 2018
+.Dd February 10, 2018
 .Dt ZFS 1M
 .Os
 .Sh NAME
@@ -277,6 +277,7 @@
 .Op Fl m Ar memory_limit
 .Ar pool script
 .Op Ar arg1 No ...
+.Nm
 .Cm load-key
 .Op Fl rn
 .Op Fl L Ar keylocation
@@ -603,10 +604,12 @@ For encrypted datasets, indicates where the dataset is currently inheriting its
 encryption key from.
 Loading or unloading a key for the
 .Sy encryptionroot
-will implicitly load / unload the key for any inheriting datasets (see
+will implicitly load / unload the key for any inheriting datasets
+.Po see
 .Nm zfs Cm load-key
 and
-.Nm zfs Cm unload-key .
+.Nm zfs Cm unload-key
+.Pc .
 Clones will always share an encryption key with their origin.
 See the
 .Sy Encryption
@@ -1213,9 +1216,11 @@ or
 If
 .Sy prompt
 is selected ZFS will ask for the key at the command prompt when
-it is required to access the encrypted data (see
+it is required to access the encrypted data
+.Po see
 .Nm Cm load-key
-). This setting will also allow the key to be passed in via STDIN, but users
+.Pc .
+This setting will also allow the key to be passed in via STDIN, but users
 should be careful not to place keys which should be kept secret on the
 command line.
 If a file URI is selected, the key will be loaded from the specified absolute
@@ -1681,7 +1686,7 @@ Controls the behavior of synchronous requests
 .Pq e.g. fsync, O_DSYNC .
 .Sy standard
 is the
-.Tn POSIX
+POSIX
 specified behavior of ensuring all synchronous requests are written to stable
 storage and all devices are flushed to ensure data is not cached by device
 controllers
@@ -1759,7 +1764,7 @@ when the pool is low on space.
 For a sparse volume, changes to
 .Sy volsize
 are not reflected in the
-.Sy refreservation.
+.Sy refreservation .
 A volume that is not sparse is said to be
 .Qq thick provisioned .
 A sparse volume can become thick provisioned by setting
@@ -1811,7 +1816,7 @@ property is
 Traditionally,
 .Ux
 and
-.Tn POSIX
+POSIX
 file systems have case-sensitive file names.
 .Pp
 The
@@ -1996,7 +2001,7 @@ and
 properties at creation time, along with an optional
 .Sy keylocation
 and
-.Sy pbkdf2iters.
+.Sy pbkdf2iters .
 After entering an encryption key, the created
 dataset will become an encryption root.
 Any descendant datasets will inherit their encryption key from the encryption
@@ -2933,7 +2938,7 @@ The output can be redirected to a file or to a different system
 .Pc .
 By default, a full stream is generated.
 .Bl -tag -width "-D"
-.It Fl D, -dedup
+.It Fl D , -dedup
 Generate a deduplicated stream.
 Blocks which would have been sent multiple times in the send stream will only be
 sent once.
@@ -2956,7 +2961,7 @@ is similar to
 The incremental source may be specified as with the
 .Fl i
 option.
-.It Fl L, -large-block
+.It Fl L , -large-block
 Generate a stream which may contain blocks larger than 128KB.
 This flag has no effect if the
 .Sy large_blocks
@@ -2971,9 +2976,9 @@ See
 for details on ZFS feature flags and the
 .Sy large_blocks
 feature.
-.It Fl P, -parsable
+.It Fl P , -parsable
 Print machine-parsable verbose information about the stream package generated.
-.It Fl R, -replicate
+.It Fl R , -replicate
 Generate a replication stream package, which will replicate the specified
 file system, and all descendent file systems, up to the named snapshot.
 When received, all properties, snapshots, descendent file systems, and clones
@@ -2992,7 +2997,7 @@ If the
 .Fl F
 flag is specified when this stream is received, snapshots and file systems that
 do not exist on the sending side are destroyed.
-.It Fl e, -embed
+.It Fl e , -embed
 Generate a more compact stream by using
 .Sy WRITE_EMBEDDED
 records for blocks which are stored more compactly on disk by the
@@ -3017,7 +3022,7 @@ See
 for details on ZFS feature flags and the
 .Sy embedded_data
 feature.
-.It Fl c, -compressed
+.It Fl c , -compressed
 Generate a more compact stream by using compressed WRITE records for blocks
 which are compressed on disk and in memory
 .Po see the
@@ -3058,7 +3063,7 @@ be fully specified
 not just
 .Em @origin
 .Pc .
-.It Fl n, -dryrun
+.It Fl n , -dryrun
 Do a dry-run
 .Pq Qq No-op
 send.
@@ -3072,7 +3077,7 @@ In this case, the verbose output will be written to standard output
 .Po contrast with a non-dry-run, where the stream is written to standard output
 and the verbose output goes to standard error
 .Pc .
-.It Fl p, -props
+.It Fl p , -props
 Include the dataset's properties in the stream.
 This flag is implicit when
 .Fl R
@@ -3081,7 +3086,7 @@ The receiving system must also support this feature.
 Sends of encrypted datasets must use
 .Fl w
 when using this flag.
-.It Fl w, -raw
+.It Fl w , -raw
 For encrypted datasets, send data exactly as it exists on disk.
 This allows backups to be taken even if encryption keys are not currently
 loaded.
@@ -3100,7 +3105,7 @@ Note that if you do not use this flag for sending encrypted datasets,
 data will be sent unencrypted and may be re-encrypted with a different
 encryption key on the receiving system, which will disable the ability
 to do a raw send to that system for incrementals.
-.It Fl v, -verbose
+.It Fl v , -verbose
 Print verbose information about the stream package generated.
 This information includes a per-second report of how much data has been sent.
 .Pp
@@ -3122,7 +3127,7 @@ When the stream generated from a filesystem or volume is received, the default
 snapshot name will be
 .Qq --head-- .
 .Bl -tag -width "-L"
-.It Fl L, -large-block
+.It Fl L , -large-block
 Generate a stream which may contain blocks larger than 128KB.
 This flag has no effect if the
 .Sy large_blocks
@@ -3137,7 +3142,7 @@ See
 for details on ZFS feature flags and the
 .Sy large_blocks
 feature.
-.It Fl c, -compressed
+.It Fl c , -compressed
 Generate a more compact stream by using compressed WRITE records for blocks
 which are compressed on disk and in memory
 .Po see the
@@ -3156,7 +3161,7 @@ option is not supplied in conjunction with
 .Fl c ,
 then the data will be decompressed before sending so it can be split into
 smaller block sizes.
-.It Fl e, -embed
+.It Fl e , -embed
 Generate a more compact stream by using
 .Sy WRITE_EMBEDDED
 records for blocks which are stored more compactly on disk by the
@@ -3196,7 +3201,7 @@ character and following
 If the incremental target is a clone, the incremental source can be the origin
 snapshot, or an earlier snapshot in the origin's filesystem, or the origin's
 origin, etc.
-.It Fl w, -raw
+.It Fl w , -raw
 For encrypted datasets, send data exactly as it exists on disk.
 This allows backups to be taken even if encryption keys are not currently
 loaded.
@@ -3254,7 +3259,7 @@ Streams are created using the
 subcommand, which by default creates a full stream.
 .Nm zfs Cm recv
 can be used as an alias for
-.Nm zfs Cm receive.
+.Nm zfs Cm receive .
 .Pp
 If an incremental stream is received, then the destination file system must
 already exist, and its most recent snapshot must match the incremental stream's
@@ -3801,10 +3806,13 @@ arguments.
 See
 .Xr zfs-program 1M
 for more information.
-.Cm load-key
+.El
+.It Xo
+.Nm Cm load-key
 .Op Fl nr
 .Op Fl L Ar keylocation
 .Fl a Ns | Ns filesystem
+.Xc
 Use
 .Ar keylocation
 instead of the
@@ -3897,7 +3905,6 @@ This is the only way to alter
 and
 .Sy pbkdf2iters
 after the dataset has been created.
-.El
 .El
 .El
 .Sh EXIT STATUS
