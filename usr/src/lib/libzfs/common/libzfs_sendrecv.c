@@ -2289,7 +2289,7 @@ recv_rename(libzfs_handle_t *hdl, const char *name, const char *tryname,
 			(void) printf("attempting rename %s to %s\n",
 			    name, newname);
 		}
-		err = recv_rename_impl(zhp, &zc);
+		err = lzc_rename(name, newname);
 		if (err == 0)
 			changelist_rename(clp, name, tryname);
 	} else {
@@ -2305,7 +2305,7 @@ recv_rename(libzfs_handle_t *hdl, const char *name, const char *tryname,
 			(void) printf("failed - trying rename %s to %s\n",
 			    name, newname);
 		}
-		err = recv_rename_impl(zhp, &zc);
+		err = lzc_rename(name, newname);
 		if (err == 0)
 			changelist_rename(clp, name, newname);
 		if (err && flags->verbose) {
