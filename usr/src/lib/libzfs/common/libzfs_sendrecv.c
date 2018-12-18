@@ -2227,7 +2227,7 @@ recv_open_grand_origin(zfs_handle_t *zhp)
 }
 
 static int
-recv_rename_impl(zfs_handle_t *zhp, zfs_cmd_t *zc)
+recv_rename_impl(zfs_handle_t *zhp, const char *source, const char *target)
 {
 	int err;
 	zfs_handle_t *ozhp = NULL;
@@ -2237,7 +2237,7 @@ recv_rename_impl(zfs_handle_t *zhp, zfs_cmd_t *zc)
 	 * attempted to rename the dataset outside of its encryption root.
 	 * Force the dataset to become an encryption root and try again.
 	 */
-	err = ioctl(zhp->zfs_hdl->libzfs_fd, ZFS_IOC_RENAME, &zc);
+	err = lzc_rename(source, target);
 	if (err == EACCES) {
 		ozhp = recv_open_grand_origin(zhp);
 		if (ozhp == NULL) {
@@ -2250,7 +2250,7 @@ recv_rename_impl(zfs_handle_t *zhp, zfs_cmd_t *zc)
 		if (err != 0)
 			goto out;
 
-		err = ioctl(zhp->zfs_hdl->libzfs_fd, ZFS_IOC_RENAME, &zc);
+		err = lzc_rename(source, target);
 	}
 
 out:
@@ -2289,7 +2289,7 @@ recv_rename(libzfs_handle_t *hdl, const char *name, const char *tryname,
 			(void) printf("attempting rename %s to %s\n",
 			    name, newname);
 		}
-		err = lzc_rename(name, newname);
+		err = recv_rename_impl(zhp, name, newname);
 		if (err == 0)
 			changelist_rename(clp, name, tryname);
 	} else {
@@ -2305,7 +2305,7 @@ recv_rename(libzfs_handle_t *hdl, const char *name, const char *tryname,
 			(void) printf("failed - trying rename %s to %s\n",
 			    name, newname);
 		}
-		err = lzc_rename(name, newname);
+		err = recv_rename_impl(zhp, name, newname);
 		if (err == 0)
 			changelist_rename(clp, name, newname);
 		if (err && flags->verbose) {
